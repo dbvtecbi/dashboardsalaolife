@@ -1,0 +1,31 @@
+# Ignorar arquivos grandes
+data/receitas.*
+*.csv
+*.xls
+*.sqlite3
+
+# Ignorar pastas de ambiente
+__pycache__/
+.venv/
+env/
+venv/
+
+# Ignora a pasta .streamlit (onde ficam senhas/secrets)
+.streamlit/*
+
+# Mas PERMITE subir o arquivo de configuração de tema
+!.streamlit/config.toml
+
+# Ignorar variáveis de ambiente
+.env
+
+# Ignorar arquivos de configuração local
+config_local.py
+
+# Ignorar arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar logs e arquivos de desenvolvimento
+*.log
+*.pyc

@@ -1,0 +1,61 @@
+/* =================================================== */
+/* MODO COMPACTO - pra caber tudo em 1 tela a 100%     */
+/* =================================================== */
+
+/* Menos respiro geral em cima/baixo */
+.block-container {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+}
+
+/* Balões mais "finos" verticalmente */
+.col-balloon {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    margin-top: 0 !important;
+    margin-bottom: 6px !important;
+}
+
+/* Pílulas menores */
+.metric-pill {
+    min-height: 80px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+
+/* Cards principais mais compactos */
+.nps-card,
+.rv-card,
+.dashboard-card-wrap {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    margin-top: 4px !important;
+    margin-bottom: 8px !important;
+}
+
+/* Grids internos com altura reduzida */
+.nps-grid .metric-pill {
+    min-height: 130px !important;
+}
+
+.rv-card .metric-pill {
+    min-height: 150px !important;
+}
+
+/* Card do objetivo (42M / 150M / AUC) mais baixinho */
+.objetivo-card-topo {
+    margin-top: 0 !important;
+    margin-bottom: 6px !important;
+    padding: 4px 10px !important;
+}
+
+/* Reduz o espaço vertical entre a linha de cima (3 colunas)
+   e a linha de baixo (NPS/RV), se algo estiver sobrando */
+.block-container > div[data-testid="stVerticalBlock"] {
+    row-gap: 0.4rem !important;
+}
+
+/* Títulos gigantes: dá uma leve reduzida para caber melhor */
+.col-balloon span[style*="font-size: 28px"] {
+    font-size: 22px !important;
+}

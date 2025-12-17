@@ -1,0 +1,16 @@
+[theme]
+# Força o modo escuro como base
+base="dark"
+
+# Cor de destaque (botões, bordas de input, sliders) - O verde do seu código
+primaryColor="#2ecc71"
+
+# Cor de fundo padrão (O seu CSS com !important vai sobrescrever isso na página principal, 
+# mas isso garante que a sidebar e o loading não pisquem branco)
+backgroundColor="#263238"
+
+# Cor de fundo secundária (Inputs, Sidebar, Selectbox)
+secondaryBackgroundColor="#20352f"
+
+# Cor do texto padrão
+textColor="#FAFAFA"
