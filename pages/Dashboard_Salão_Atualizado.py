@@ -3,6 +3,9 @@
 import re
 import math
 import sqlite3
+
+# Controle de escala para ajuste de tamanho
+TV_SCALE = 0.90  # ajuste fino: 0.80 a 0.96 (valores menores = elementos menores)
 import unicodedata
 import traceback
 from pathlib import Path
@@ -419,13 +422,13 @@ st.markdown(
     """
 <style>
 :root {
-    --tv-scale: 1.0;  /* Escala global - altere aqui para aumentar/diminuir */
-    --radius: calc(16px * var(--tv-scale));
+    --tv-scale: 0.85;  /* REDUZIDO de 1.0 para 0.85 para melhor visualização em TV */
+    --radius: calc(14px * var(--tv-scale));
     --border-width: 1px;
     --border-color: #d1d9d5;
     --border: var(--border-width) solid var(--border-color);
-    --shadow: 0 3px 15px rgba(0, 0, 0, 0.08);
-    --hover-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    --hover-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
     --bg-primary: #20352F;
     --bg-secondary: #1a2b26;
     --bg-odd: #1e2e29;
@@ -437,9 +440,9 @@ st.markdown(
     --accent-hover: #27ae60;
     --transition: all 0.2s ease;
     --yellow: #948161;
-    --tv-block-width: 100%;  /* Full width para TV */
+    --tv-block-width: 100%;
     --page-bg: #20352F;
-    --base-font-size: calc(1em * var(--tv-scale));
+    --base-font-size: calc(0.9em * var(--tv-scale));
 }
 
 html, body {
@@ -504,14 +507,14 @@ html, body {
 
 .metric-card-kpi {
     background: #20352F !important;
-    border-radius: 14px !important;  /* Reduzido de 16px */
+    border-radius: 12px !important;
     border: 1px solid #2ECC71 !important;
-    padding: 8px 12px 6px 12px !important;  /* Reduzido */
-    margin: 3px 3px 3px 3px !important;  /* Reduzido de 4px */
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;  /* Sombra mais suave */
+    padding: 4px 8px !important;
+    margin: 2px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
     color: white !important;
     height: auto !important;
-    font-size: 0.95em;  /* Fonte ligeiramente menor */
+    font-size: 0.9em;
 }
 
 [data-testid="stHorizontalBlock"] > [data-testid="stHorizontalBlock"] > [data-testid="stHorizontalBlock"] {
@@ -524,10 +527,10 @@ div[data-testid="stVerticalBlock"]:not(:has(.metric-card-kpi)) {
 
 .section-title {
     color: var(--text-primary) !important;
-    font-size: 1.1rem !important;
+    font-size: 1rem !important;
     font-weight: 600 !important;
-    margin-bottom: 15px !important;
-    padding-bottom: 8px !important;
+    margin-bottom: 8px !important;
+    padding-bottom: 4px !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
@@ -561,21 +564,22 @@ div[data-testid="stVerticalBlock"]:not(:has(.metric-card-kpi)) {
 }
 
 .dashboard-card.nps-card {
-    height: calc(380px * var(--tv-scale)) !important;
-    min-height: calc(380px * var(--tv-scale)) !important;
-    max-height: calc(380px * var(--tv-scale)) !important;
+    height: calc(300px * var(--tv-scale)) !important;
+    min-height: calc(300px * var(--tv-scale)) !important;
+    max-height: calc(300px * var(--tv-scale)) !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
-    margin-top: 1px !important;
+    margin-top: 0 !important;
+    padding: 10px 12px !important;
 }
 
 .stPlotlyChart {
-    height: calc(380px * var(--tv-scale)) !important;
-    min-height: calc(380px * var(--tv-scale)) !important;
-    max-height: calc(380px * var(--tv-scale)) !important;
+    height: calc(300px * var(--tv-scale)) !important;
+    min-height: calc(300px * var(--tv-scale)) !important;
+    max-height: calc(300px * var(--tv-scale)) !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
-    margin-top: 1px !important;
+    margin-top: 0 !important;
 }
 
 .stPlotlyChart > div {
@@ -1192,6 +1196,50 @@ def fmt_pct(x: Any) -> str:
         return f"{x:,.2f}%".replace(".", "X").replace(",", ".").replace("X", ",")
     except Exception:
         return "-"
+
+
+def _mes_pt(m: int) -> str:
+    """Retorna o nome do mês em português"""
+    meses = [
+        "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+        "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+    ]
+    return meses[m-1] if 1 <= int(m) <= 12 else "-"
+
+
+def filtrar_nps_a_partir_de_junho(df_nps: pd.DataFrame) -> tuple:
+    """
+    Mantém somente respostas cuja data_resposta esteja no ciclo:
+    01/06 (ano base) até 31/05 (ano seguinte).
+    O ano base é definido pela última data_resposta existente no df.
+    """
+    if df_nps is None or df_nps.empty or "data_resposta" not in df_nps.columns:
+        return df_nps, "-"
+
+    aux = df_nps.copy()
+    aux["data_resposta"] = pd.to_datetime(aux["data_resposta"], errors="coerce", dayfirst=True)
+    aux = aux.dropna(subset=["data_resposta"])
+    if aux.empty:
+        return aux, "-"
+
+    dt_max = pd.Timestamp(aux["data_resposta"].max()).normalize()
+
+    # ciclo começa em junho
+    inicio = pd.Timestamp(dt_max.year, 6, 1)
+    if dt_max.month < 6:
+        inicio = pd.Timestamp(dt_max.year - 1, 6, 1)
+
+    fim_excl = inicio + pd.DateOffset(years=1)  # exclusivo (01/06 do ano seguinte)
+    aux = aux[(aux["data_resposta"] >= inicio) & (aux["data_resposta"] < fim_excl)].copy()
+
+    # Ajustando o label para mostrar o mês de junho no final também
+    fim_incl = fim_excl - pd.Timedelta(days=1)
+    # Se o mês final for maio, mostramos junho
+    if fim_incl.month == 5:
+        label = f"{_mes_pt(inicio.month)} {inicio.year} - {_mes_pt(fim_incl.month + 1)} {fim_incl.year}"
+    else:
+        label = f"{_mes_pt(inicio.month)} {inicio.year} - {_mes_pt(fim_incl.month)} {fim_incl.year}"
+    return aux, label
 
 
 def _pct_br(v: float) -> str:
@@ -3172,6 +3220,15 @@ with st.container():
             df_growth_auc["data"] = pd.to_datetime(df_growth_auc["ano_mes"] + "-01")
             df_growth_auc = df_growth_auc.sort_values("data")
 
+            # =========================
+            # KPIs do ponto MAIS RECENTE do gráfico
+            # =========================
+            ultima = df_growth_auc.iloc[-1] if not df_growth_auc.empty else None
+            auc_hoje = float(ultima.get("Net_Em_M", 0.0) or 0.0) if ultima is not None else 0.0
+            clientes_ativos_hoje = int(ultima.get("clientes_positivo", 0) or 0) if ultima is not None else 0
+            auc_hoje_txt = formatar_valor_curto(auc_hoje)
+            clientes_hoje_txt = f"{clientes_ativos_hoje:,}".replace(",", ".")
+
             min_auc = float(df_growth_auc["Net_Em_M"].min() or 0.0)
             max_auc = float(df_growth_auc["Net_Em_M"].max() or 0.0)
             if max_auc <= min_auc:
@@ -3206,30 +3263,8 @@ with st.container():
             if len(auc_vals) > 1:
                 auc_labels[-1] = f"R$ {auc_vals.iloc[-1] / 1_000_000:.0f}M"
 
-            # Pontos de início de subida: diff>0 e diff anterior <=0
-            for i in range(1, len(auc_vals) - 1):
-                if (auc_diff.iloc[i] > 0) and (auc_diff.iloc[i - 1] <= 0):
-                    auc_labels[i] = f"R$ {auc_vals.iloc[i] / 1_000_000:.0f}M"
-
+            # Não adiciona anotações para os valores de AUC
             auc_annotations = []
-            for i, label in enumerate(auc_labels):
-                if not label:
-                    continue
-                auc_annotations.append(
-                    dict(
-                        x=df_growth_auc["ano_mes"].iloc[i],
-                        xref="x",
-                        y=float(auc_vals.iloc[i] or 0.0),
-                        yref="y2",
-                        text=label,
-                        showarrow=False,
-                        font=dict(color="rgba(255, 255, 255, 0.75)", size=10),
-                        xanchor="center",
-                        yanchor="bottom",
-                        yshift=12,
-                        textangle=-90,
-                    )
-                )
 
             fig_growth_auc.add_trace(
                 go.Scatter(
@@ -3243,15 +3278,20 @@ with st.container():
                 )
             )
 
+            # Constantes para o layout dos cards
+            PLOT_TOP = 0.84       # até onde vai o "gráfico" de verdade (0..1 em paper)
+            CARDS_Y0 = 0.90       # início da faixa dos cards
+            CARDS_Y1 = 0.995      # fim da faixa dos cards
+
             fig_growth_auc.update_layout(
-                height=430,
+                height=int(430 * TV_SCALE),
                 margin=dict(l=20, r=140, t=15, b=15),
                 annotations=auc_annotations,
                 title=dict(
                     text="<b>CRESCIMENTO AUC E CLIENTES ATIVOS</b>",
                     font=dict(size=14, color="white"),
                     x=0.02,
-                    y=0.98,
+                    y=0.885,  # posição ajustada para ficar abaixo dos cards
                     xanchor="left",
                     yanchor="top",
                 ),
@@ -3274,6 +3314,7 @@ with st.container():
                     showline=True,
                     linecolor="rgba(255, 255, 255, 0.2)",
                     zeroline=False,
+                    domain=[0, PLOT_TOP],  # define o domínio do eixo y
                 ),
                 yaxis2=dict(
                     title=None,
@@ -3290,13 +3331,14 @@ with st.container():
                     ticktext=tick_text,
                     range=[nice_min, nice_max],
                     zeroline=False,
+                    domain=[0, PLOT_TOP],  # define o domínio do eixo y2
                 ),
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1,
+                    y=0.845,  # posição ajustada para ficar na faixa livre
+                    xanchor="center",
+                    x=0.5,
                     font=dict(color="white", size=11),
                     bgcolor="rgba(0,0,0,0.2)",
                     bordercolor="rgba(255, 255, 255, 0.2)",
@@ -3316,6 +3358,9 @@ with st.container():
 
     with col_upper_right:
         df_nps = carregar_dados_nps()
+        # Aplicar filtro de data (junho a maio)
+        df_nps, periodo_nps_label = filtrar_nps_a_partir_de_junho(df_nps)
+        
         if not df_nps.empty:
             nps_color = "#ffffff"
             m_nps = _calcular_metricas_nps(df_nps)
@@ -3363,11 +3408,8 @@ with st.container():
 <div class="nps-card-header" style="position: relative; margin-bottom: 4px;">
 <h3 class="section-title" style="margin: 0; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-size: 15px;">NPS — XP Aniversário</h3>
 <div style="position: absolute; top: 0; right: 0; text-align: right;">
-<div style="padding: 4px 8px; background: rgba(46, 204, 113, 0.15); border-radius: 12px; font-size: 0.75em; line-height: 1.2; display: block; color: #b8f7d4; margin-bottom: 4px; width: fit-content; margin-left: auto;">
-<strong>Aderência = </strong> Respondidos / Total
-</div>
-<div style="padding: 4px 8px; background: rgba(46, 204, 113, 0.15); border-radius: 12px; font-size: 0.75em; line-height: 1.2; display: block; color: #b8f7d4; width: fit-content; margin-left: auto;">
-<strong>Período = </strong> Maio 2025 - Maio 2026
+<div style="padding: 4px 8px; background: rgba(46, 204, 113, 0.15); border-radius: 12px; font-size: 0.75em; line-height: 1.2; display: block; color: #b8f7d4; width: fit-content; margin-left: auto; margin-bottom: 4px;">
+<strong>Período = </strong> Junho 2025 - Junho 2026
 </div>
 </div>
 </div>
@@ -3498,13 +3540,14 @@ with st.container():
         pct_realizado_total = v_mes / obj_total_mes * 100 if obj_total_mes > 0 else 0
 
         diferenca = v_mes - threshold_teorico
-        pct_diferenca = diferenca / threshold_teorico if threshold_teorico != 0 else 0
-        diff_style = "color: #e74c3c;" if diferenca < 0 else ""
-        border_style = "border-left-color: #e74c3c !important;" if diferenca < 0 else "border-left-color: var(--accent) !important;"
-
-        fmt_diferenca = formatar_valor_curto(diferenca)
-        fmt_pct_val = fmt_pct(pct_diferenca).replace("%", "")
-        diff_text = f"{fmt_diferenca} ({fmt_pct_val}%)"
+        pct_diferenca = (diferenca / threshold_teorico * 100) if threshold_teorico != 0 else 0
+        
+        if diferenca >= 0:
+            diff_text = f"<span style='color:#2ecc7a'>{fmt_valor(diferenca)} ({pct_diferenca:+.1f}%) 🎯</span>"
+            border_style = "border-left-color: #2ecc7a !important;"
+        else:
+            diff_text = f"<span style='color:#e74c3c'>{fmt_valor(diferenca)} ({pct_diferenca:+.1f}%)</span>"
+            border_style = "border-left-color: #e74c3c !important;"
 
         val_restante = f"R$ {int(round(restante_mes / 1_000_000))}M" if restante_mes >= 1_000_000 else f"R$ {int(round(restante_mes / 1_000))}K"
 
@@ -3517,7 +3560,7 @@ with st.container():
 
           <div class="metric-pill metric-pill-top" style="{border_style} min-height: 40px; display:flex; flex-direction:column; justify-content:center;">
             <div class="label" style="font-size: 11px;">Projetado vs Realizado</div>
-            <div class="value" style="{diff_style} font-size: 0.8rem; line-height: 1.2;">{diff_text}</div>
+            <div class="value" style="font-size: 0.8rem; line-height: 1.2;">{diff_text}</div>
           </div>
 
           <div class="metric-pill metric-pill-top" style="min-height: 40px; display:flex; flex-direction:column; justify-content:center;">
@@ -3588,13 +3631,14 @@ with st.container():
         pct_realizado_ano_col = v_ano_col / meta_eoy_col * 100 if meta_eoy_col > 0 else 0
 
         diferenca_ano_col = v_ano_col - threshold_ano_col
-        pct_diferenca_ano_col = diferenca_ano_col / threshold_ano_col if threshold_ano_col != 0 else 0
-        diff_style_ano_col = "color: #e74c3c;" if diferenca_ano_col < 0 else ""
-        border_style_ano_col = "border-left-color: #e74c3c !important;" if diferenca_ano_col < 0 else "border-left-color: var(--accent) !important;"
-
-        fmt_diferenca_ano_col = formatar_valor_curto(diferenca_ano_col)
-        fmt_pct_ano_col = fmt_pct(pct_diferenca_ano_col).replace("%", "")
-        diff_text_ano_col = f"{fmt_diferenca_ano_col} ({fmt_pct_ano_col}%)"
+        pct_diferenca_ano_col = (diferenca_ano_col / threshold_ano_col * 100) if threshold_ano_col != 0 else 0
+        
+        if diferenca_ano_col >= 0:
+            diff_text_ano_col = f"<span style='color:#2ecc7a'>{fmt_valor(diferenca_ano_col)} ({pct_diferenca_ano_col:+.1f}%) 🎯</span>"
+            border_style_ano_col = "border-left-color: #2ecc7a !important;"
+        else:
+            diff_text_ano_col = f"<span style='color:#e74c3c'>{fmt_valor(diferenca_ano_col)} ({pct_diferenca_ano_col:+.1f}%)</span>"
+            border_style_ano_col = "border-left-color: #e74c3c !important;"
 
         val_restante_ano_col = f"R$ {int(round(restante_ano_col / 1_000_000))}M" if restante_ano_col >= 1_000_000 else f"R$ {int(round(restante_ano_col / 1_000))}K"
 
@@ -3607,7 +3651,7 @@ with st.container():
 
           <div class="metric-pill metric-pill-top" style="{border_style_ano_col} min-height: 40px; display:flex; flex-direction:column; justify-content:center;">
             <div class="label" style="font-size: 11px;">Projetado vs Realizado</div>
-            <div class="value" style="{diff_style_ano_col} font-size: 0.8rem; line-height: 1.2;">{diff_text_ano_col}</div>
+            <div class="value" style="font-size: 0.8rem; line-height: 1.2;">{diff_text_ano_col}</div>
           </div>
 
           <div class="metric-pill metric-pill-top" style="min-height: 40px; display:flex; flex-direction:column; justify-content:center;">
@@ -3681,12 +3725,12 @@ with st.container():
 
             render_custom_progress_bars(objetivo_hoje_val=threshold_hoje, realizado_val=v_auc, max_val=float(objetivo_ano_atual or 0.01), min_val=0)
 
-            diff_style = "color: #e74c3c;" if diferenca < 0 else ""
-            border_style = "border-left-color: #e74c3c !important;" if diferenca < 0 else "border-left-color: var(--accent) !important;"
-
-            fmt_diferenca = formatar_valor_curto(diferenca)
-            fmt_pct_val = fmt_pct(pct_diferenca).replace("%", "")
-            diff_text = f"{fmt_diferenca} ({fmt_pct_val}%)"
+            if diferenca >= 0:
+                diff_text = f"<span style='color:#2ecc7a'>{fmt_valor(diferenca)} ({pct_diferenca:+.1f}%) 🎯</span>"
+                border_style = "border-left-color: #2ecc7a !important;"
+            else:
+                diff_text = f"<span style='color:#e74c3c'>{fmt_valor(diferenca)} ({pct_diferenca:+.1f}%)</span>"
+                border_style = "border-left-color: #e74c3c !important;"
 
             val_restante_auc = f"R$ {int(round(restante_auc / 1_000_000))}M" if restante_auc >= 1_000_000 else f"R$ {int(round(restante_auc / 1_000))}K"
 
@@ -3699,7 +3743,7 @@ with st.container():
 
               <div class="metric-pill metric-pill-top" style="{border_style} min-height: 40px; display:flex; flex-direction:column; justify-content:center;">
                 <div class="label" style="font-size: 11px;">Projetado vs Realizado</div>
-                <div class="value" style="{diff_style} font-size: 0.8rem; line-height: 1.2;">{diff_text}</div>
+                <div class="value" style="font-size: 0.8rem; line-height: 1.2;">{diff_text}</div>
               </div>
 
               <div class="metric-pill metric-pill-top" style="min-height: 40px; display:flex; flex-direction:column; justify-content:center;">
@@ -3746,24 +3790,79 @@ with st.container():
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Rodapé com data de atualização
-    st.markdown(
-        f"""
-        <div style="
-            text-align: center;
-            color: #ffffff;
-            font-size: 16px;
-            padding: 10px 0;
-            width: 100%;
-            font-weight: 500;
-        ">
-            Atualizado em: {data_formatada}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    
     # Close dashboard wrapper
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # CSS de override para controle de escala
+    st.markdown(
+        f"""
+    <style>
+    /* ==========================
+       SCALE PATCH (proporcional)
+       ========================== */
+    :root {{
+      --tv-scale: {TV_SCALE} !important; /* domina o valor final */
+    }}
+
+    /* Cards principais (o que você mais sente "não diminuir") */
+    .dashboard-card {{
+      border-radius: calc(14px * var(--tv-scale)) !important;
+      padding: calc(14px * var(--tv-scale)) calc(16px * var(--tv-scale)) !important;
+      margin-bottom: calc(14px * var(--tv-scale)) !important;
+      font-size: calc(0.95em * var(--tv-scale)) !important;
+    }}
+
+    .metric-card-kpi {{
+      border-radius: calc(12px * var(--tv-scale)) !important;
+      padding: calc(4px * var(--tv-scale)) calc(8px * var(--tv-scale)) !important;
+      margin: calc(2px * var(--tv-scale)) !important;
+      font-size: calc(0.90em * var(--tv-scale)) !important;
+    }}
+
+    /* Esses eram os "vilões" por estarem fixos em 440px */
+    .dashboard-card.nps-card,
+    .stPlotlyChart {{
+      height: calc(440px * var(--tv-scale)) !important;
+      min-height: calc(440px * var(--tv-scale)) !important;
+      max-height: calc(440px * var(--tv-scale)) !important;
+    }}
+
+    /* Grid dos mini-cards (tava fixo em 120px) */
+    .tv-metric-grid {{
+      height: calc(120px * var(--tv-scale)) !important;
+      min-height: calc(120px * var(--tv-scale)) !important;
+    }}
+
+    /* Corrige tamanhos inline dentro dos mini-cards (você usa min-height/font-size no HTML) */
+    .metric-pill-top {{
+      min-height: calc(40px * var(--tv-scale)) !important;
+    }}
+    .metric-pill-top .label {{
+      font-size: calc(11px * var(--tv-scale)) !important;
+    }}
+    .metric-pill-top .value {{
+      font-size: calc(0.90rem * var(--tv-scale)) !important;
+    }}
+
+    /* Tabela (padding/altura eram fixos e "seguravam" o tamanho) */
+    .ranking-table thead tr:first-child th {{
+      padding: calc(12px * var(--tv-scale)) calc(10px * var(--tv-scale)) !important;
+    }}
+    .ranking-table thead tr:nth-child(2) th {{
+      padding: calc(10px * var(--tv-scale)) calc(8px * var(--tv-scale)) !important;
+    }}
+    .ranking-table tbody td {{
+      padding: calc(10px * var(--tv-scale)) calc(12px * var(--tv-scale)) !important;
+      height: calc(42px * var(--tv-scale)) !important;
+    }}
+
+    /* Espaçamento geral */
+    .dbv-dashboard-root {{
+      gap: calc(18px * var(--tv-scale)) !important;
+    }}
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
 #1223
