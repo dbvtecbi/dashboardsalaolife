@@ -8,43 +8,6 @@ import streamlit as st
 # =========================================================
 # FUNÇÃO: DOWNLOAD DO GOOGLE DRIVE
 # =========================================================
-def baixar_arquivo_google_drive(id_arquivo: str, destino: str) -> bool:
-    """
-    Baixa um arquivo do Google Drive usando o ID do arquivo.
-    O arquivo precisa estar público ou compartilhado corretamente.
-    """
-    destino_path = Path(destino)
-    destino_path.parent.mkdir(parents=True, exist_ok=True)
-
-    url = f"https://drive.google.com/uc?export=download&id={id_arquivo}"
-
-    try:
-        r = requests.get(url, stream=True, timeout=120)
-        r.raise_for_status()
-
-        progress_text = "Baixando arquivo de dados..."
-        progress_bar = st.progress(0, text=progress_text)
-
-        total_size = int(r.headers.get("content-length", 0))
-        bytes_downloaded = 0
-
-        with open(destino_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if not chunk:
-                    continue
-                f.write(chunk)
-                bytes_downloaded += len(chunk)
-
-                if total_size > 0:
-                    progress = min(int((bytes_downloaded / total_size) * 100), 100)
-                    progress_bar.progress(progress, text=f"{progress_text} {progress}%")
-
-        progress_bar.empty()
-        return True
-
-    except Exception as e:
-        st.error(f"Erro ao baixar o arquivo: {e}")
-        return False
 
 
 # =========================================================
