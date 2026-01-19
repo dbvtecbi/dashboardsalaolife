@@ -338,10 +338,7 @@ css = f"""
     background: #211c5a !important;
 }}
 
-section[data-testid="stSidebar"] {
-    display: block !important;
-}
-
+section[data-testid="stSidebar"],
 header[data-testid="stHeader"] {{
     display: none !important;
 }}
