@@ -2476,12 +2476,25 @@ def carregar_dados_positivador_mtd() -> pd.DataFrame:
             
             # Tenta encontrar colunas com nomes alternativos
             mapeamento_colunas = {}
+            
+            # Mapeamento específico para as colunas do Positivador MTD
+            mapeamento_especifico = {
+                'Data_Posicao': 'Data Posição',
+                'Net_Em_M': 'Net Em M', 
+                'Captacao_Liquida_em_M': 'Captação Líquida em M',
+                'Assessor': 'Assessor'
+            }
+            
             for col in colunas_necessarias:
-                # Tenta encontrar coluna com nome similar
-                for coluna_tabela in colunas:
-                    if col.lower() in coluna_tabela.lower():
-                        mapeamento_colunas[col] = coluna_tabela
-                        break
+                # Primeiro tenta o mapeamento específico
+                if col in mapeamento_especifico and mapeamento_especifico[col] in colunas:
+                    mapeamento_colunas[col] = mapeamento_especifico[col]
+                else:
+                    # Depois tenta encontrar por similaridade
+                    for coluna_tabela in colunas:
+                        if col.lower().replace('_', '') in coluna_tabela.lower().replace(' ', '').replace('_', ''):
+                            mapeamento_colunas[col] = coluna_tabela
+                            break
             
             # Se encontrou mapeamentos alternativos, renomeia as colunas na consulta
             if mapeamento_colunas:
@@ -2493,7 +2506,7 @@ def carregar_dados_positivador_mtd() -> pd.DataFrame:
                     else:
                         colunas_select.append(f'NULL as "{col}"')
                 
-                # Usando string format para evitar problemas com aspas
+                query = f'SELECT {", ".join(colunas_select)} FROM "{tabela_selecionada}"'
                 df = pd.read_sql_query(query, conn)
             else:
                 # Se não encontrou nenhuma coluna, retorna todas
