@@ -124,7 +124,6 @@ st.set_page_config(
     page_title="Dashboard DBV Capital",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
 
 def _norm_txt(x: object) -> str:
@@ -339,7 +338,10 @@ css = f"""
     background: #211c5a !important;
 }}
 
-section[data-testid="stSidebar"],
+section[data-testid="stSidebar"] {
+    display: block !important;
+}
+
 header[data-testid="stHeader"] {{
     display: none !important;
 }}
