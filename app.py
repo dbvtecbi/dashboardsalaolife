@@ -56,28 +56,34 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESCONDER SIDEBAR (OPÇÃO 2)
-# =========================================================
-st.markdown(
-    """
-    <style>
-        [data-testid="stSidebar"] { display: none; }
-        [data-testid="stSidebarNav"] { display: none; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# =========================================================
-# CONFIGURAÇÕES (VIA VARIÁVEIS DE AMBIENTE)
+# CONFIGURAÇÕES (VARIÁVEIS DE AMBIENTE)
 # =========================================================
 id_arquivo_google_drive = os.getenv("GDRIVE_FILE_ID", "").strip()
 caminho_dados = os.getenv("DATA_PATH", "data/dados.db").strip()
 
 # =========================================================
+# SIDEBAR
+# =========================================================
+with st.sidebar:
+    st.title("DBV Capital")
+    st.markdown("### Navegação")
+    st.page_link(
+        "pages/Dashboard_Salão_Atualizado.py",
+        label="📊 Dashboard Salão Atualizado",
+    )
+    st.page_link(
+        "pages/Dashboard_Salão_Life.py",
+        label="💼 Dashboard Salão Life",
+    )
+
+# =========================================================
 # HOME
 # =========================================================
 st.title("Dashboard Salão")
+st.markdown(
+    "Bem-vindo ao **Dashboard Salão**. Utilize o menu lateral para navegar "
+    "entre os dashboards disponíveis."
+)
 
 # =========================================================
 # PREPARAÇÃO DOS DADOS
@@ -106,20 +112,16 @@ if not Path(caminho_dados).exists():
         st.stop()
 
 # =========================================================
-# NAVEGAÇÃO (SEM SIDEBAR)
+# CONTEÚDO PRINCIPAL
 # =========================================================
-st.markdown("### Selecione o dashboard")
+st.markdown("### Status")
+st.success("Base de dados carregada com sucesso.")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    st.page_link(
-        "pages/Dashboard_Salão_Atualizado.py",
-        label="📊 Dashboard Salão Atualizado",
-    )
-
-with col2:
-    st.page_link(
-        "pages/Dashboard_Salão_Life.py",
-        label="💼 Dashboard Salão Life",
-    )
+st.markdown(
+    """
+    **Próximos passos:**
+    - Acesse os dashboards pelo menu lateral  
+    - Valide os dados carregados  
+    - Ajuste visual/layout conforme necessidade
+    """
+)
