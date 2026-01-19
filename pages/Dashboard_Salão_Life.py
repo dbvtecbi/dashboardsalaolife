@@ -776,6 +776,115 @@ def _render_top3_qtd(top3):
 
 def render_area_card(card_title: str, df_all: pd.DataFrame, area_values: list[str]):
     df_area = _filter_area(df_all, area_values, card_title)
+    
+    # Verificar se há dados para esta área
+    if df_area.empty or df_area["data"].dropna().empty:
+        # Exibir card vazio se não houver dados
+        html = f"""
+        <div class="dashboard-card">
+            <h3 class="section-title">{card_title}</h3>
+            <div class="card-body">
+                <div class="period-box">
+                    <div class="period-header">
+                        <div class="period-title">Sem Dados</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Valor de Negócio</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Qtd Negócios</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="period-box">
+                    <div class="period-header">
+                        <div class="period-title">Sem Dados</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Valor de Negócio</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Qtd Negócios</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+        st_html(html)
+        return
+    
+    # Obter a data mais recente dos dados desta área
+    data_mais_recente_area = df_area["data"].max()
+    
+    # Converter data_atualizacao para datetime para comparação
+    dados_desatualizados = False
+    try:
+        if data_atualizacao != "N/A":
+            data_atualizacao_dt = pd.to_datetime(data_atualizacao, format="%d/%m/%Y")
+            
+            # Se os dados da área forem anteriores à data de atualização, marcar como desatualizados
+            if data_mais_recente_area < data_atualizacao_dt:
+                dados_desatualizados = True
+    except Exception:
+        # Se houver erro na conversão, continua com a exibição normal
+        pass
+
+    # Se os dados estiverem desatualizados, exibir card vazio
+    if dados_desatualizados:
+        html = f"""
+        <div class="dashboard-card">
+            <h3 class="section-title">{card_title}</h3>
+            <div class="card-body">
+                <div class="period-box">
+                    <div class="period-header">
+                        <div class="period-title">-</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Valor de Negócio</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Qtd Negócios</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="period-box">
+                    <div class="period-header">
+                        <div class="period-title">-</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Valor de Negócio</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="mini-kpi-card">
+                            <div class="mini-kpi-label">Qtd Negócios</div>
+                            <div class="mini-kpi-value">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+        st_html(html)
+        return
 
     di_m, df_m, lab_m, _ = _period_month(df_area)
     di_y, df_y, lab_y, _ = _period_year(df_area)
