@@ -1,0 +1,63 @@
+/* Ajuste global de escala */
+html {
+    zoom: 90%;  /* Reduz a escala para 90% do tamanho original */
+}
+
+/* Ajustes específicos para garantir que os elementos se comportem bem com a nova escala */
+.block-container {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+}
+
+/* Ajuste para os cards */
+.nps-card, .rv-card, .dashboard-card-wrap {
+    padding: 8px !important;
+    margin: 4px 0 !important;
+}
+
+/* Ajuste para as métricas */
+.metric-pill {
+    min-height: 70px !important;
+    padding: 4px 8px !important;
+}
+
+/* Ajuste para os títulos */
+h1, h2, h3, h4, h5, h6 {
+    margin: 0.3em 0 !important;
+}
+
+/* Ajuste para os gráficos - removido scaling que causava clipping */
+.plot-container {
+    /* transform: scale(0.95);  Removido para evitar clipping */
+    /* transform-origin: top left;  Removido */
+    /* width: 105%;  Removido para evitar cortes */
+    width: 100% !important;
+    overflow: visible !important;
+}
+
+/* Garante que tooltips não sejam cortados */
+.js-plotly-plot .plotly .modebar {
+    z-index: 1000 !important;
+}
+
+/* Container principal do gráfico com overflow visível */
+.stPlotlyChart {
+    overflow: visible !important;
+    min-height: fit-content !important;
+}
+
+/* Melhora o espaçamento entre seções */
+.st-emotion-cache-1r6slb0 {
+    margin-bottom: 0.5rem !important;
+}
+
+/* Garante que colunas não cortem gráficos */
+.stColumns > div {
+    overflow: visible !important;
+}
+
+/* Container do Streamlit para gráficos */
+.element-container:has(.stPlotlyChart) {
+    overflow: visible !important;
+    min-height: fit-content !important;
+}

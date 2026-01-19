@@ -113,5 +113,5 @@ def require_master():
 def back_button(label: str = '←  Voltar'):
     col, _ = st.columns([0.12, 0.88])
     with col:
-        if st.button(label, key=f'back_{st.session_state.get("usuario", "anon")}', use_container_width=True):
+        if st.button(label, key=f'back_{st.session_state.get("usuario", "anon")}', width='stretch'):
             st.switch_page('Home.py')
