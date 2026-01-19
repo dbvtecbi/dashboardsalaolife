@@ -5,9 +5,13 @@ import requests
 import streamlit as st
 
 
+# =========================================================
+# FUNÇÃO: DOWNLOAD DO GOOGLE DRIVE
+# =========================================================
 def baixar_arquivo_google_drive(id_arquivo: str, destino: str) -> bool:
     """
-    Baixa um arquivo do Google Drive usando o ID do arquivo (link de download direto).
+    Baixa um arquivo do Google Drive usando o ID do arquivo.
+    O arquivo precisa estar público ou compartilhado corretamente.
     """
     destino_path = Path(destino)
     destino_path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,56 +50,76 @@ def baixar_arquivo_google_drive(id_arquivo: str, destino: str) -> bool:
 # =========================================================
 # CONFIGURAÇÃO DA PÁGINA
 # =========================================================
-st.set_page_config(page_title="Dashboard Salão", layout="wide")
+st.set_page_config(
+    page_title="Dashboard Salão",
+    layout="wide",
+)
 
 # =========================================================
-# CONFIGURAÇÕES (AJUSTE AQUI)
+# ESCONDER SIDEBAR (OPÇÃO 2)
 # =========================================================
-# 1) ID do arquivo no Google Drive (apenas o ID, não o link completo)
-# Ex.: https://drive.google.com/file/d/SEU_ID/view  -> use SEU_ID
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebar"] { display: none; }
+        [data-testid="stSidebarNav"] { display: none; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# =========================================================
+# CONFIGURAÇÕES (VIA VARIÁVEIS DE AMBIENTE)
+# =========================================================
 id_arquivo_google_drive = os.getenv("GDRIVE_FILE_ID", "").strip()
-
-# 2) Caminho local onde o arquivo será salvo no deploy (Railway)
-# Dica: use uma pasta dentro do projeto, ex.: data/arquivo.db (ou .xlsx/.csv)
 caminho_dados = os.getenv("DATA_PATH", "data/dados.db").strip()
 
 # =========================================================
-# PREPARAÇÃO DOS DADOS (SE NECESSÁRIO)
-# =========================================================
-if not Path(caminho_dados).exists():
-    if not id_arquivo_google_drive:
-        st.error(
-            "Arquivo de dados não encontrado e o ID do Google Drive não foi configurado.\n\n"
-            "Defina a variável de ambiente **GDRIVE_FILE_ID** (ID do arquivo no Drive) "
-            "ou envie o arquivo de dados junto no deploy."
-        )
-        st.stop()
-
-    with st.spinner("Preparando os dados..."):
-        sucesso = baixar_arquivo_google_drive(id_arquivo_google_drive, caminho_dados)
-        if not sucesso:
-            st.error("Não foi possível baixar o arquivo de dados. Verifique a conexão e o ID do Drive.")
-            st.stop()
-
-# =========================================================
-# HOME (EVITA CRASH NO RAILWAY)
+# HOME
 # =========================================================
 st.title("Dashboard Salão")
 
-st.markdown("Selecione abaixo qual dashboard você deseja abrir:")
+# =========================================================
+# PREPARAÇÃO DOS DADOS
+# =========================================================
+if not Path(caminho_dados).exists():
+    st.warning("Base de dados ainda não encontrada no servidor.")
+
+    if not id_arquivo_google_drive:
+        st.error(
+            "Arquivo de dados não encontrado e o ID do Google Drive não foi configurado.\n\n"
+            "Defina a variável de ambiente **GDRIVE_FILE_ID** no Railway."
+        )
+        st.stop()
+
+    if st.button("Baixar dados agora"):
+        with st.spinner("Preparando os dados..."):
+            sucesso = baixar_arquivo_google_drive(
+                id_arquivo_google_drive,
+                caminho_dados,
+            )
+
+        if not sucesso:
+            st.stop()
+
+        st.success("Dados baixados com sucesso. Recarregue a página.")
+        st.stop()
+
+# =========================================================
+# NAVEGAÇÃO (SEM SIDEBAR)
+# =========================================================
+st.markdown("### Selecione o dashboard")
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.page_link(
         "pages/Dashboard_Salão_Atualizado.py",
-        label="Abrir Dashboard Salão Atualizado",
-        icon="📊",
+        label="📊 Dashboard Salão Atualizado",
     )
 
 with col2:
     st.page_link(
-        "pages/Dashboard_FeeBased.py",
-        label="Abrir Dashboard FeeBased",
-        icon="💼",
+        "pages/Dashboard_Salão_Life.py",
+        label="💼 Dashboard Salão Life",
     )
