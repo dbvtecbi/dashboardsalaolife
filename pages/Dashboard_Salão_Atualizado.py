@@ -2468,7 +2468,7 @@ def carregar_dados_positivador_mtd() -> pd.DataFrame:
         print(f"Colunas encontradas na tabela {tabela_selecionada}: {colunas}")
         
         # Verifica se as colunas necessárias existem
-        colunas_necessarias = ['Data_Posicao', 'Net_Em_M', 'Captacao_Liquida_em_M', 'Assessor']
+        colunas_necessarias = ['Data_Posicao', 'Net_Em_M', 'Captacao_Liquida_em_M', 'Assessor', 'Cliente']
         colunas_faltando = [col for col in colunas_necessarias if col not in colunas]
         
         if colunas_faltando:
@@ -2482,7 +2482,8 @@ def carregar_dados_positivador_mtd() -> pd.DataFrame:
                 'Data_Posicao': 'Data Posição',
                 'Net_Em_M': 'Net Em M', 
                 'Captacao_Liquida_em_M': 'Captação Líquida em M',
-                'Assessor': 'Assessor'
+                'Assessor': 'Assessor',
+                'Cliente': 'Cliente'
             }
             
             for col in colunas_necessarias:
