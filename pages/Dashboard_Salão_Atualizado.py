@@ -3860,8 +3860,8 @@ else:
     df_pos_ano_cap_top3 = preparar_df_para_top3_com_transferencias(df_pos_full)  # Fallback para FULL
 
 data_atualizacao_bd = obter_ultima_data_posicao()
-# Usar data fixa de 16/01/2026 conforme solicitado
-data_ref = pd.Timestamp(2026, 1, 16).normalize()
+# Usar data de atualização real dos dados
+data_ref = pd.Timestamp(data_atualizacao_bd).normalize()
 data_formatada = data_ref.strftime("%d/%m/%Y")
 
 # =====================================================
@@ -4853,6 +4853,9 @@ with st.container():
         st.markdown("<div class='col-tv-inner'>", unsafe_allow_html=True)
 
         try:
+            # Definir data de atualização para este card (usando data_ref como base)
+            data_atualizacao = pd.Timestamp(data_ref)
+            
             # Usar o mesmo valor base do card Rumo a 1bi para garantir consistência
             # Obter o valor base AUC de 2026
             auc_initial_2026_local = obter_auc_initial(2026)
