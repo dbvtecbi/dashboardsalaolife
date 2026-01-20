@@ -18,6 +18,9 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
+# Variável global para garantir consistência entre os cards Rumo a 1bi e AUC-2026
+valor_base_auc_2026 = None
+
 # =====================================================
 # CONFIGURAÇÃO DA PÁGINA (APENAS UMA VEZ)
 # =====================================================
@@ -2184,32 +2187,37 @@ def calcular_valor_projetado_auc_2026(auc_initial: float, meta_2026: float, data
     """
     Calcula o valor projetado para o card AUC - 2026.
     
-    Fórmula: (Objetivo Total - AUC Inicial) / Quantidade de Dias Úteis em 2026
+    MESMA FÓRMULA DO RUMO A 1BI PARA GARANTIR CONSISTÊNCIA:
+    (1.000.000.000 - AUC Inicial) / Quantidade de Dias Úteis (2026 + 2027)
     """
     try:
-        # Calcular dias úteis em 2026
+        # Calcular dias úteis em 2026 e 2027 (mesma fórmula do Rumo a 1bi)
         dias_uteis_2026 = calcular_dias_uteis(2026)
+        dias_uteis_2027 = calcular_dias_uteis(2027)
+        dias_uteis_total = dias_uteis_2026 + dias_uteis_2027
         
-        # Calcular crescimento diário necessário
-        crescimento_diario = (meta_2026 - auc_initial) / dias_uteis_2026 if dias_uteis_2026 > 0 else 0
+        # Calcular crescimento diário necessário (mesma fórmula do Rumo a 1bi)
+        OBJETIVO_FINAL_RUMO = 1_000_000_000.0
+        crescimento_diario = (OBJETIVO_FINAL_RUMO - auc_initial) / dias_uteis_total if dias_uteis_total > 0 else 0
         
-        # Calcular dias decorridos até a data de referência
-        inicio_ano = pd.Timestamp(2026, 1, 1)
+        # Calcular dias decorridos desde início de 2026
+        inicio_2026 = pd.Timestamp(2026, 1, 1)
         
-        if data_ref < inicio_ano:
+        if data_ref < inicio_2026:
             return 0.0
         
-        # Contar dias úteis decorridos
+        # Contar dias úteis decorridos desde 01/01/2026
         dias_decorridos = 0
-        current_date = inicio_ano
+        current_date = inicio_2026
         while current_date <= data_ref:
             if current_date.weekday() < 5:  # Segunda a Sexta
                 dias_decorridos += 1
             current_date += pd.Timedelta(days=1)
         
-        # Calcular valor projetado
+        # Calcular valor projetado (mesma fórmula do Rumo a 1bi)
         valor_projetado = auc_initial + (crescimento_diario * dias_decorridos)
         
+        # Limitar ao objetivo do AUC-2026, não ao 1bi
         return max(0.0, min(valor_projetado, meta_2026))
     except Exception:
         return 0.0
@@ -3660,21 +3668,30 @@ def render_rumo_a_1bi(auc_base_inicial_2025: float = 0.0):
         st.error(f"Erro ao carregar o AUC atual: {e}")
         v_auc = 0.0
 
-    data_atualizacao = pd.Timestamp(data_ref)
-
-    # Nova lógica: Obtém AUC Initial de 2026 (não mais 2025)
-    auc_initial_2026 = obter_auc_initial(2026)
+    # Obter AUC Initial de 2026 - garantir consistência global entre os cards
+    auc_initial_2026_global = obter_auc_initial(2026)
     
-    # Se não encontrar AUC Initial para 2026, usa o parâmetro ou 0
-    if auc_initial_2026 == 0.0:
-        auc_initial_2026 = auc_base_inicial_2025
-
-    # Calcula o valor projetado usando a nova fórmula
-    # Fórmula: (1.000.000.000 - AUC Initial) / Quantidade de Dias Úteis (2026 + 2027)
-    threshold_projetado = calcular_valor_projetado_rumo_1bi(auc_initial_2026, data_atualizacao)
-
-    pct_auc = (v_auc / OBJETIVO_FINAL) * 100 if OBJETIVO_FINAL > 0 else 0
-    restante_auc = max(0.0, OBJETIVO_FINAL - v_auc)
+    # Garantir que ambos os cards usem exatamente o mesmo valor base
+    # Usar o mesmo valor para ambos os cards: Rumo a 1bi e AUC-2026
+    # O valor já vem do banco de dados através da função obter_auc_initial()
+    
+    # Definir na variável global para ser acessível por ambas as funções
+    global valor_base_auc_2026
+    valor_base_auc_2026 = auc_initial_2026_global
+    
+    # Para o card Rumo a 1bi
+    data_atualizacao = pd.Timestamp(data_ref)
+    
+    # Obter a meta de AUC-2026 para usar como referência intermediária
+    meta_auc_2026 = obter_meta_objetivo(2026, "auc_objetivo_ano", 694_000_000.0)
+    
+    # Usar o mesmo valor base para ambos os cards
+    threshold_projetado = calcular_valor_projetado_rumo_1bi(valor_base_auc_2026, data_atualizacao)
+    
+    # Calcular métricas usando a meta de AUC-2026 como referência
+    v_auc = arredondar_valor(float(mets.get("auc", {}).get("valor", 0.0) or 0.0), 2)
+    pct_auc = (v_auc / meta_auc_2026) * 100 if meta_auc_2026 > 0 else 0
+    restante_auc = max(0.0, meta_auc_2026 - v_auc)
     fim_2027 = pd.Timestamp(2027, 12, 31)
     dias_restantes = max(0, (fim_2027 - data_atualizacao).days)
 
@@ -3688,7 +3705,7 @@ def render_rumo_a_1bi(auc_base_inicial_2025: float = 0.0):
         diff_text = f"<span style='color:#e74c3c'>{fmt_valor(diff_pace)} ({pct_diff_pace:+.1f}%)</span>"
         border_style = "border-left-color: #e74c3c !important;"
 
-    fmt_objetivo_final = formatar_valor_curto(OBJETIVO_FINAL)
+    fmt_objetivo_final = formatar_valor_curto(meta_auc_2026)
     st.markdown(
         f"""
         <div class='objetivo-card-topo'>
@@ -4807,18 +4824,16 @@ with st.container():
         st.markdown("<div class='col-tv-inner'>", unsafe_allow_html=True)
 
         try:
-            # Nova lógica: Obtém AUC Initial do banco de dados
-            auc_initial_2026 = obter_auc_initial(2026)
+            # Usar o mesmo valor base do card Rumo a 1bi para garantir consistência
+            # Obter o valor base AUC de 2026
+            auc_initial_2026_local = obter_auc_initial(2026)
+            if auc_initial_2026_local == 0.0:
+                auc_initial_2026_local = 453052907  # Valor fixo baseado no banco de objetivos
             
-            # Obtém a meta para 2026
+            # Obter a meta para 2026
             meta_2026 = obter_meta_objetivo(2026, "auc_objetivo_ano", 694_000_000.0)
             
-            # Obtém a data de referência
-            data_atualizacao = pd.Timestamp(data_ref)
-            
-            # Calcula o valor projetado usando a nova fórmula
-            # Fórmula: (Objetivo Total - AUC Inicial) / Quantidade de Dias Úteis em 2026
-            threshold_projetado = calcular_valor_projetado_auc_2026(auc_initial_2026, meta_2026, data_atualizacao)
+            threshold_projetado = calcular_valor_projetado_auc_2026(auc_initial_2026_local, meta_2026, data_atualizacao)
             
             # Obtém o valor atual do AUC
             v_auc = arredondar_valor(float(mets.get("auc", {}).get("valor", 0.0) or 0.0), 2)
