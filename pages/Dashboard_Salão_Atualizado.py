@@ -2191,33 +2191,33 @@ def calcular_valor_projetado_auc_2026(auc_initial: float, meta_2026: float, data
     (1.000.000.000 - AUC Inicial) / Quantidade de Dias Úteis (2026 + 2027)
     """
     try:
-        # Calcular dias úteis em 2026 e 2027 (mesma fórmula do Rumo a 1bi)
+        # Calcular TODOS os dias do mês (não apenas úteis)
         dias_uteis_2026 = calcular_dias_uteis(2026)
         dias_uteis_2027 = calcular_dias_uteis(2027)
-        dias_uteis_total = dias_uteis_2026 + dias_uteis_2027
+        dias_uteis_total_mes = dias_uteis_2026 + dias_uteis_2027
         
-        # Calcular crescimento diário necessário (mesma fórmula do Rumo a 1bi)
+        # Calcular crescimento diário necessário (mesma lógica do Rumo a 1bi)
         OBJETIVO_FINAL_RUMO = 1_000_000_000.0
-        crescimento_diario = (OBJETIVO_FINAL_RUMO - auc_initial) / dias_uteis_total if dias_uteis_total > 0 else 0
+        crescimento_diario = (OBJETIVO_FINAL_RUMO - auc_initial) / dias_uteis_total_mes if dias_uteis_total_mes > 0 else 0
         
-        # Calcular dias decorridos desde início de 2026
-        inicio_2026 = pd.Timestamp(2026, 1, 1)
+        # Calcular dias decorridos desde início do mês de referência até a data de referência
+        inicio_mes = pd.Timestamp(data_ref.year, data_ref.month, 1)
         
-        if data_ref < inicio_2026:
+        if data_ref < inicio_mes:
             return 0.0
         
-        # Contar dias úteis decorridos desde 01/01/2026
-        dias_decorridos = 0
-        current_date = inicio_2026
+        # Contar TODOS os dias do mês (não apenas úteis)
+        dias_decorridos_mes = 0
+        current_date = inicio_mes
         while current_date <= data_ref:
-            if current_date.weekday() < 5:  # Segunda a Sexta
-                dias_decorridos += 1
+            # Contar todos os dias (incluindo fins de semana)
+            dias_decorridos_mes += 1
             current_date += pd.Timedelta(days=1)
         
-        # Calcular valor projetado (mesma fórmula do Rumo a 1bi)
-        valor_projetado = auc_initial + (crescimento_diario * dias_decorridos)
+        # Calcular valor projetado (mesma lógica do Rumo a 1bi)
+        valor_projetado = auc_initial + (crescimento_diario * dias_decorridos_mes)
         
-        # Limitar ao objetivo do AUC-2026, não ao 1bi
+        return max(0.0, min(valor_projetado, OBJETIVO_FINAL_RUMO))C-2026, não ao 1bi
         return max(0.0, min(valor_projetado, meta_2026))
     except Exception:
         return 0.0
