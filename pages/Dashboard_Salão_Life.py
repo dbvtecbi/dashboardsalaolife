@@ -185,7 +185,7 @@ def formatar_moeda(valor: float) -> str:
 # =========================
 # CARREGAMENTO DO BANCO (ÚNICO)
 # =========================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=60)  # Cache de 60 segundos em vez de permanente
 def carregar_dados_produtos():
     caminho_db = Path(__file__).parent.parent / "DBV Capital_Produtos.db"
     if not caminho_db.exists():
@@ -323,6 +323,20 @@ def carregar_dados_produtos():
 # PÁGINA
 # =========================
 df, data_atualizacao = carregar_dados_produtos()
+
+# Converter data de atualização para formato de mês
+if data_atualizacao != "N/A":
+    try:
+        data_dt = pd.to_datetime(data_atualizacao, format="%d/%m/%Y")
+        # Dicionário com os nomes dos meses em português
+        month_names_pt = {
+            1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+            7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+        }
+        data_atualizacao = f"{month_names_pt[data_dt.month]}/{data_dt.year}"
+    except Exception:
+        # Se houver erro, mantém o formato original
+        pass
 
 css = f"""
 <div style='text-align: center; margin: 0 auto 2px auto;'>
@@ -657,14 +671,39 @@ def _filter_area(df_: pd.DataFrame, area_values: list[str], card_title: str = No
 
     return filtered
 
-def _period_month(df_area: pd.DataFrame):
+def _period_month(df_area: pd.DataFrame, data_atualizacao_geral: str = None):
     if df_area.empty or df_area["data"].dropna().empty:
         return None, None, "Mês", False
 
-    last_dt = df_area["data"].max()
-    per = last_dt.to_period("M")
+    # Usar sempre a data de atualização geral como referência
+    # Isso garante que todas as áreas usem o mesmo mês
+    if data_atualizacao_geral and data_atualizacao_geral != "N/A":
+        try:
+            # Converter do formato "Mês/Ano" para datetime
+            month_names_pt = {
+                "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6,
+                "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
+            }
+            
+            # Parse do formato "Dezembro/2025"
+            if "/" in data_atualizacao_geral:
+                mes_str, ano_str = data_atualizacao_geral.split("/")
+                mes_num = month_names_pt.get(mes_str, 12)  # Default para dezembro
+                ano_num = int(ano_str)
+                data_referencia = pd.Timestamp(ano_num, mes_num, 1)
+            else:
+                # Fallback: tentar formato de data normal
+                data_referencia = pd.to_datetime(data_atualizacao_geral, format="%d/%m/%Y")
+        except Exception:
+            # Se houver erro, usa data atual
+            data_referencia = pd.Timestamp.now()
+    else:
+        # Se não houver data de atualização, usa data atual
+        data_referencia = pd.Timestamp.now()
+    
+    per = data_referencia.to_period("M")
     di = date(per.year, per.month, 1)
-    df_ = last_dt.date()
+    df_ = date(per.year, per.month, pd.Timestamp(per.year, per.month, 1).days_in_month)
     
     # Dicionário com os nomes dos meses em português
     month_names_pt = {
@@ -823,69 +862,8 @@ def render_area_card(card_title: str, df_all: pd.DataFrame, area_values: list[st
         st_html(html)
         return
     
-    # Obter a data mais recente dos dados desta área
-    data_mais_recente_area = df_area["data"].max()
-    
-    # Converter data_atualizacao para datetime para comparação
-    dados_desatualizados = False
-    try:
-        if data_atualizacao != "N/A":
-            data_atualizacao_dt = pd.to_datetime(data_atualizacao, format="%d/%m/%Y")
-            
-            # Se os dados da área forem anteriores à data de atualização, marcar como desatualizados
-            if data_mais_recente_area < data_atualizacao_dt:
-                dados_desatualizados = True
-    except Exception:
-        # Se houver erro na conversão, continua com a exibição normal
-        pass
-
-    # Se os dados estiverem desatualizados, exibir card vazio
-    if dados_desatualizados:
-        html = f"""
-        <div class="dashboard-card">
-            <h3 class="section-title">{card_title}</h3>
-            <div class="card-body">
-                <div class="period-box">
-                    <div class="period-header">
-                        <div class="period-title">-</div>
-                    </div>
-                    <div class="metric-block">
-                        <div class="mini-kpi-card">
-                            <div class="mini-kpi-label">Valor de Negócio</div>
-                            <div class="mini-kpi-value">-</div>
-                        </div>
-                    </div>
-                    <div class="metric-block">
-                        <div class="mini-kpi-card">
-                            <div class="mini-kpi-label">Qtd Negócios</div>
-                            <div class="mini-kpi-value">-</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="period-box">
-                    <div class="period-header">
-                        <div class="period-title">-</div>
-                    </div>
-                    <div class="metric-block">
-                        <div class="mini-kpi-card">
-                            <div class="mini-kpi-label">Valor de Negócio</div>
-                            <div class="mini-kpi-value">-</div>
-                        </div>
-                    </div>
-                    <div class="metric-block">
-                        <div class="mini-kpi-card">
-                            <div class="mini-kpi-label">Qtd Negócios</div>
-                            <div class="mini-kpi-value">-</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """
-        st_html(html)
-        return
-
-    di_m, df_m, lab_m, _ = _period_month(df_area)
+    # Calcular período usando sempre a data de atualização geral
+    di_m, df_m, lab_m, _ = _period_month(df_area, data_atualizacao)
     di_y, df_y, lab_y, _ = _period_year(df_area)
 
     v_m, q_m, topv_m, topq_m = _calc_block(df_area, di_m, df_m)
