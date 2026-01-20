@@ -2231,10 +2231,13 @@ def calcular_valor_projetado_rumo_1bi(auc_initial: float, data_ref: pd.Timestamp
     try:
         OBJETIVO_FINAL = 1_000_000_000.0
         
+        # Usar EXATAMENTE a mesma lógica do AUC-2026
         # Calcular TODOS os dias do ano (365 dias), não apenas dias úteis
-        dias_total_ano = 365
+        dias_uteis_2026 = calcular_dias_uteis(2026)
+        dias_uteis_2027 = calcular_dias_uteis(2027)
+        dias_total_ano = dias_uteis_2026 + dias_uteis_2027
         
-        # Calcular crescimento diário necessário (mesma lógica do Rumo a 1bi)
+        # Calcular crescimento diário necessário (mesma lógica do AUC-2026)
         OBJETIVO_FINAL_RUMO = 1_000_000_000.0
         crescimento_diario = (OBJETIVO_FINAL_RUMO - auc_initial) / dias_total_ano if dias_total_ano > 0 else 0
         
@@ -2252,7 +2255,7 @@ def calcular_valor_projetado_rumo_1bi(auc_initial: float, data_ref: pd.Timestamp
             dias_decorridos += 1
             current_date += pd.Timedelta(days=1)
         
-        # Calcular valor projetado (mesma lógica do Rumo a 1bi)
+        # Calcular valor projetado (EXATAMENTE a mesma lógica do AUC-2026)
         valor_projetado = auc_initial + (crescimento_diario * dias_decorridos)
         
         return max(0.0, min(valor_projetado, OBJETIVO_FINAL_RUMO))
@@ -3857,7 +3860,8 @@ else:
     df_pos_ano_cap_top3 = preparar_df_para_top3_com_transferencias(df_pos_full)  # Fallback para FULL
 
 data_atualizacao_bd = obter_ultima_data_posicao()
-data_ref = pd.Timestamp(data_atualizacao_bd).normalize()
+# Usar data fixa de 16/01/2026 conforme solicitado
+data_ref = pd.Timestamp(2026, 1, 16).normalize()
 data_formatada = data_ref.strftime("%d/%m/%Y")
 
 # =====================================================
@@ -4506,9 +4510,26 @@ with st.container():
                 # Obtém a data de referência
                 data_atualizacao = pd.Timestamp(data_ref)
                 
-                # Calcula o valor projetado usando a nova fórmula
-                # Fórmula: Gap / Dias Úteis Restantes (período 2026)
-                projetado = calcular_valor_projetado_feebased(data_atualizacao)
+                # Calcular crescimento diário necessário (mesma lógica do Rumo a 1bi)
+                dias_total_ano = 365
+                crescimento_diario = (OBJETIVO_FINAL_FEEBASED - VALOR_INICIAL_FEEBASED) / dias_total_ano if dias_total_ano > 0 else 0
+                
+                # Calcular dias decorridos desde início de 2026 até a data de referência
+                inicio_2026 = pd.Timestamp(2026, 1, 1)
+                if data_ref < inicio_2026:
+                    dias_decorridos = 0
+                else:
+                    # Contar TODOS os dias do ano (365 dias), não apenas úteis
+                    dias_decorridos = 0
+                    current_date = inicio_2026
+                    while current_date <= data_ref:
+                        # Contar todos os dias (incluindo fins de semana)
+                        dias_decorridos += 1
+                        current_date += pd.Timedelta(days=1)
+                
+                # Calcular valor projetado (mesma lógica dos outros cards)
+                threshold_ano = VALOR_INICIAL_FEEBASED + (crescimento_diario * dias_decorridos)
+                threshold_ano = min(threshold_ano, OBJETIVO_FINAL_FEEBASED)
 
                 # --- Cálculos Visuais ---
                 pct_realizado = (realizado / OBJETIVO_FINAL_FEEBASED) * 100 if OBJETIVO_FINAL_FEEBASED > 0 else 0
@@ -4517,8 +4538,8 @@ with st.container():
                 fim_2026 = pd.Timestamp(2026, 12, 31)
                 dias_restantes = max(0, (fim_2026 - data_atualizacao).days)
 
-                diff_pace = realizado - projetado
-                pct_diff_pace = (diff_pace / projetado * 100) if projetado > 0 else 0
+                diff_pace = realizado - threshold_ano
+                pct_diff_pace = (diff_pace / threshold_ano * 100) if threshold_ano > 0 else 0
 
                 if diff_pace >= 0:
                     diff_text = f"<span style='color:#2ecc7a'>{fmt_valor(diff_pace)} ({pct_diff_pace:+.1f}%) 🎯</span>"
@@ -4540,7 +4561,7 @@ with st.container():
                     unsafe_allow_html=True,
                 )
 
-                render_custom_progress_bars(objetivo_hoje_val=projetado, realizado_val=realizado, max_val=OBJETIVO_FINAL_FEEBASED, min_val=0)
+                render_custom_progress_bars(objetivo_hoje_val=threshold_ano, realizado_val=realizado, max_val=OBJETIVO_FINAL_FEEBASED, min_val=0)
 
                 # --- Renderiza Grid de Pílulas (Igual ao AUC)
                 cards_fb_html = f"""
@@ -4638,21 +4659,29 @@ with st.container():
         meta_anual = obter_meta_objetivo(ano_meta=ano_atual, coluna="cap_objetivo_ano", fallback=fallback_cap)
         v_ano = float(mets.get("capliq_ano", {}).get("valor", 0.0) or 0.0)
 
-        mes_atual = data_ref.month
-        obj_restante_ano = max(0.0, (meta_anual or 0.0) - v_ano)
-        meses_restantes = max(1, 12 - mes_atual + 1)
-        obj_total_mes = obj_restante_ano / meses_restantes
+        # Usar meta mensal fixa (meta anual dividida por 12)
+        obj_total_mes = (meta_anual or 0.0) / 12
 
         data_atualizacao = pd.Timestamp(data_ref)
         primeiro_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1)
         ultimo_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1) + pd.offsets.MonthEnd(1)
 
-        dias_uteis_mes = len(pd.bdate_range(start=primeiro_dia_mes, end=ultimo_dia_mes))
-        dias_ate_atualizacao = len(pd.bdate_range(start=primeiro_dia_mes, end=data_atualizacao))
+        # Usar dias corridos como no cálculo do ano (para consistência)
+        total_dias_mes = (ultimo_dia_mes - primeiro_dia_mes).days + 1
+        dias_ate_atualizacao = (data_atualizacao - primeiro_dia_mes).days + 1
 
-        threshold_teorico = (obj_total_mes * dias_ate_atualizacao) / dias_uteis_mes if dias_uteis_mes > 0 else 0
-        threshold_teorico = min(threshold_teorico, obj_total_mes)
-        threshold_mes = threshold_teorico
+        # Calcular valor projetado (usar a mesma proporção exata do ano)
+        # Calcular threshold_ano_col localmente para evitar erro de variável não definida
+        primeiro_dia_ano = pd.Timestamp(data_ref.year, 1, 1)
+        ultimo_dia_ano = pd.Timestamp(data_ref.year, 12, 31)
+        total_dias_ano = (ultimo_dia_ano - primeiro_dia_ano).days + 1
+        dias_ate_atualizacao_ano = (data_atualizacao - primeiro_dia_ano).days + 1
+        
+        threshold_ano_col_local = (meta_anual * dias_ate_atualizacao_ano) / total_dias_ano if total_dias_ano > 0 else 0.0
+        threshold_ano_col_local = min(threshold_ano_col_local, float(meta_anual or 0.0))
+        threshold_ano_col_local = round(threshold_ano_col_local, 1)
+        
+        threshold_mes = threshold_ano_col_local  # Usar o mesmo valor do projetado do ano para consistência
 
         st.markdown(
             f"""
@@ -4670,8 +4699,8 @@ with st.container():
         dias_restantes = max(0, (ultimo_dia_mes - data_atualizacao).days)
         pct_realizado_total = v_mes / obj_total_mes * 100 if obj_total_mes > 0 else 0
 
-        diferenca = v_mes - threshold_teorico
-        pct_diferenca = (diferenca / threshold_teorico * 100) if threshold_teorico != 0 else 0
+        diferenca = v_mes - threshold_mes
+        pct_diferenca = (diferenca / threshold_mes * 100) if threshold_mes != 0 else 0
         
         if diferenca >= 0:
             diff_text = f"<span style='color:#2ecc7a'>{fmt_valor(diferenca)} ({pct_diferenca:+.1f}%) 🎯</span>"
@@ -4744,6 +4773,8 @@ with st.container():
 
         threshold_ano_col = (meta_eoy_col * dias_ate_atualizacao_ano_col) / total_dias_ano_col if total_dias_ano_col > 0 else 0.0
         threshold_ano_col = min(threshold_ano_col, float(meta_eoy_col or 0.0))
+        # Arredondar para mesma precisão do valor projetado do mês
+        threshold_ano_col = round(threshold_ano_col, 1)
 
         st.markdown(
             f"""
