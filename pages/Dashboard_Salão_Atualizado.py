@@ -2217,8 +2217,7 @@ def calcular_valor_projetado_auc_2026(auc_initial: float, meta_2026: float, data
         # Calcular valor projetado (mesma lógica do Rumo a 1bi)
         valor_projetado = auc_initial + (crescimento_diario * dias_decorridos_mes)
         
-        return max(0.0, min(valor_projetado, OBJETIVO_FINAL_RUMO))C-2026, não ao 1bi
-        return max(0.0, min(valor_projetado, meta_2026))
+        return max(0.0, min(valor_projetado, OBJETIVO_FINAL_RUMO))
     except Exception:
         return 0.0
 
@@ -2232,32 +2231,31 @@ def calcular_valor_projetado_rumo_1bi(auc_initial: float, data_ref: pd.Timestamp
     try:
         OBJETIVO_FINAL = 1_000_000_000.0
         
-        # Calcular dias úteis em 2026 e 2027
-        dias_uteis_2026 = calcular_dias_uteis(2026)
-        dias_uteis_2027 = calcular_dias_uteis(2027)
-        dias_uteis_total = dias_uteis_2026 + dias_uteis_2027
+        # Calcular TODOS os dias do ano (365 dias), não apenas dias úteis
+        dias_total_ano = 365
         
-        # Calcular crescimento diário necessário
-        crescimento_diario = (OBJETIVO_FINAL - auc_initial) / dias_uteis_total if dias_uteis_total > 0 else 0
+        # Calcular crescimento diário necessário (mesma lógica do Rumo a 1bi)
+        OBJETIVO_FINAL_RUMO = 1_000_000_000.0
+        crescimento_diario = (OBJETIVO_FINAL_RUMO - auc_initial) / dias_total_ano if dias_total_ano > 0 else 0
         
-        # Calcular dias decorridos desde início de 2026
+        # Calcular dias decorridos desde início de 2026 até a data de referência
         inicio_2026 = pd.Timestamp(2026, 1, 1)
         
         if data_ref < inicio_2026:
             return 0.0
         
-        # Contar dias úteis decorridos desde 01/01/2026
+        # Contar TODOS os dias do ano (365 dias), não apenas úteis
         dias_decorridos = 0
         current_date = inicio_2026
         while current_date <= data_ref:
-            if current_date.weekday() < 5:  # Segunda a Sexta
-                dias_decorridos += 1
+            # Contar todos os dias (incluindo fins de semana)
+            dias_decorridos += 1
             current_date += pd.Timedelta(days=1)
         
-        # Calcular valor projetado
+        # Calcular valor projetado (mesma lógica do Rumo a 1bi)
         valor_projetado = auc_initial + (crescimento_diario * dias_decorridos)
         
-        return max(0.0, min(valor_projetado, OBJETIVO_FINAL))
+        return max(0.0, min(valor_projetado, OBJETIVO_FINAL_RUMO))
     except Exception:
         return 0.0
 
@@ -2277,27 +2275,27 @@ def calcular_valor_projetado_feebased(data_ref: pd.Timestamp) -> float:
         OBJETIVO_FINAL = 200_000_000.0
         VALOR_INICIAL = 119_800_000.0
         
+        # Calcular TODOS os dias do ano (365 dias), não apenas dias úteis
+        dias_uteis_2026 = calcular_dias_uteis(2026)
+        
         # Calcular gap
         gap = OBJETIVO_FINAL - VALOR_INICIAL
-        
-        # Calcular dias úteis em 2026
-        dias_uteis_2026 = calcular_dias_uteis(2026)
         
         # Calcular crescimento diário necessário
         crescimento_diario = gap / dias_uteis_2026 if dias_uteis_2026 > 0 else 0
         
-        # Calcular dias úteis decorridos desde início de 2026
+        # Calcular dias decorridos desde início de 2026 até a data de referência
         inicio_2026 = pd.Timestamp(2026, 1, 1)
         
         if data_ref < inicio_2026:
             return VALOR_INICIAL
         
-        # Contar dias úteis decorridos
+        # Contar TODOS os dias do ano (365 dias), não apenas úteis
         dias_decorridos = 0
         current_date = inicio_2026
         while current_date <= data_ref:
-            if current_date.weekday() < 5:  # Segunda a Sexta
-                dias_decorridos += 1
+            # Contar todos os dias (incluindo fins de semana)
+            dias_decorridos += 1
             current_date += pd.Timedelta(days=1)
         
         # Calcular valor projetado
