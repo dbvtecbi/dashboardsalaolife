@@ -18,6 +18,17 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
+# Importar funções da Objetivos_PJ1 (versões robustas)
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from correcao_final import (
+    carregar_dados_objetivos_pj1_robusto as carregar_dados_objetivos_pj1,
+    obter_dados_captacao_mes_robusto as obter_dados_captacao_mes,
+    obter_dados_captacao_ano_robusto as obter_dados_captacao_ano,
+    obter_dados_auc_2026_robusto as obter_dados_auc_2026,
+    obter_dados_rumo_1bi_robusto as obter_dados_rumo_1bi
+)
+
 # Variável global para garantir consistência entre os cards Rumo a 1bi e AUC-2026
 valor_base_auc_2026 = None
 
@@ -1244,12 +1255,12 @@ def formatar_valor_curto(valor: Any) -> str:
         return "R$ 0"
 
     if v >= 1_000_000_000:
-        return f"R$ {v / 1_000_000_000:,.1f}bi".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {v / 1_000_000_000:,.1f}bi"
     if v >= 1_000_000:
-        return f"R$ {v / 1_000_000:,.1f}M".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {v / 1_000_000:,.1f}M"
     if v >= 1_000:
-        return f"R$ {v / 1_000:,.1f}K".replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"R$ {v:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {v / 1_000:,.1f}K"
+    return f"R$ {v:,.0f}"
 
 
 def fmt_valor_simples(v: Any) -> str:
@@ -2028,83 +2039,45 @@ def calcular_captacao_total_liquida(df_pos: pd.DataFrame, data_ini: datetime, da
 # =====================================================
 # OBJETIVOS
 # =====================================================
-@st.cache_data(show_spinner=False)
-def carregar_dados_objetivos_pj1() -> pd.DataFrame:
-    """
-    Carrega os dados da tabela objetivos do banco de Objetivos.
-    """
-    caminho_db = Path(__file__).parent.parent / "DBV Capital_Objetivos.db"
-    
-    # Fallback para diretório local se não encontrar no pai
-    if not caminho_db.exists():
-        caminho_db = Path("DBV Capital_Objetivos.db")
-        
-    try:
-        conn = sqlite3.connect(str(caminho_db))
-        
-        # Busca os dados da tabela "objetivos"
-        df = pd.read_sql_query('SELECT * FROM objetivos', conn)
-        conn.close()
-
-        if df.empty:
-            st.sidebar.warning("⚠️ A tabela objetivos está vazia")
-            return df
-            
-        # Usar a primeira linha como cabeçalho e remover do DataFrame
-        if len(df) > 0:
-            new_columns = df.iloc[0].tolist()
-            df.columns = new_columns
-            df = df.drop(df.index[0]).reset_index(drop=True)
-            
-        # Garantir conversão numérica das colunas críticas
-        col_mapping = {
-            "Objetivo": "Objetivo",
-            "Cap. Liq Objetivo": "Cap. Liq Objetivo",
-            "AUC Objetivo": "AUC Objetivo",
-            "Receita Objetivo": "Receita Objetivo"
-        }
-        
-        # Verifica se as colunas necessárias existem
-        for col in ["Objetivo", "Cap. Liq Objetivo", "AUC Objetivo"]:
-            if col not in df.columns:
-                st.sidebar.error(f"❌ Coluna obrigatória não encontrada: {col}")
-                return pd.DataFrame()
-        
-        # Converte colunas para numérico
-        for col in ["Objetivo", "Cap. Liq Objetivo", "AUC Objetivo"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-            
-        return df
-
-    except Exception as e:
-        st.sidebar.error(f"❌ Erro ao carregar dados de objetivos: {str(e)}")
-        return pd.DataFrame()
+# OBS: A função carregar_dados_objetivos_pj1 foi removida
+# pois está sendo importada de correcao_final (versão robusta)
+# =====================================================
 
 
 def obter_meta_objetivo(ano_meta: int, coluna: str, fallback: float = 0.0) -> float:
     """
-    Busca um valor de objetivo na tabela objetivos filtrando por ano e coluna.
+    Busca um valor de objetivo na tabela Objetivos_PJ1 filtrando por ano e coluna.
     """
     try:
         objetivos_df = carregar_dados_objetivos_pj1()
         if objetivos_df.empty:
             return float(fallback)
 
+        # Mapeamento para as colunas da tabela Objetivos_PJ1
         col_mapping = {
-            "auc_objetivo_ano": "AUC Objetivo",
-            "cap_objetivo_ano": "Cap. Liq Objetivo",
+            "auc_objetivo_ano": "AUC Objetivo (Ano)",
+            "cap_objetivo_ano": "Cap Objetivo (ano)",
             "rec_objetivo_ano": "Receita Objetivo",
             "c_ativadas_objetivo_ano": "Contas Ativadas",
         }
         coluna_real = col_mapping.get(coluna, coluna)
 
-        row_ano = objetivos_df.loc[objetivos_df["Objetivo"] == ano_meta]
-        if not row_ano.empty and coluna_real in row_ano.columns:
-            val_banco = float(row_ano[coluna_real].max())
-            if val_banco > 0:
-                if fallback and fallback > val_banco:
-                    return float(fallback)
-                return val_banco
+        # Filtrar pelo ano (usando a coluna Data)
+        if "Data" in objetivos_df.columns:
+            # Converter para datetime se não for
+            if not pd.api.types.is_datetime64_any_dtype(objetivos_df["Data"]):
+                objetivos_df["Data"] = pd.to_datetime(objetivos_df["Data"], errors="coerce")
+            
+            # Filtrar registros do ano especificado
+            df_ano = objetivos_df[objetivos_df["Data"].dt.year == ano_meta]
+            
+            if not df_ano.empty and coluna_real in df_ano.columns:
+                # Pegar o valor mais recente do ano (último registro)
+                val_banco = float(df_ano[coluna_real].iloc[-1]) if not df_ano[coluna_real].empty else 0.0
+                if val_banco > 0:
+                    if fallback and fallback > val_banco:
+                        return float(fallback)
+                    return val_banco
 
         return float(fallback)
     except Exception:
@@ -2113,17 +2086,28 @@ def obter_meta_objetivo(ano_meta: int, coluna: str, fallback: float = 0.0) -> fl
 
 def obter_auc_initial(ano: int) -> float:
     """
-    Obtém o valor de AUC Initial do banco de dados objetivos para um ano específico.
+    Obtém o valor de AUC Initial do banco de dados Objetivos_PJ1 para um ano específico.
+    Para AUC Initial, usamos o valor acumulado do primeiro dia do ano.
     """
     try:
         objetivos_df = carregar_dados_objetivos_pj1()
         if objetivos_df.empty:
             return 0.0
 
-        row_ano = objetivos_df.loc[objetivos_df["Objetivo"] == ano]
-        if not row_ano.empty and "AUC Inicial" in row_ano.columns:
-            val_banco = float(row_ano["AUC Inicial"].max())
-            return val_banco if val_banco > 0 else 0.0
+        # Filtrar pelo ano (usando a coluna Data)
+        if "Data" in objetivos_df.columns:
+            # Converter para datetime se não for
+            if not pd.api.types.is_datetime64_any_dtype(objetivos_df["Data"]):
+                objetivos_df["Data"] = pd.to_datetime(objetivos_df["Data"], errors="coerce")
+            
+            # Filtrar registros do ano especificado
+            df_ano = objetivos_df[objetivos_df["Data"].dt.year == ano]
+            
+            if not df_ano.empty and "AUC Acumulado" in df_ano.columns:
+                # Pegar o primeiro registro do ano (valor inicial)
+                df_ano_sorted = df_ano.sort_values("Data")
+                val_banco = float(df_ano_sorted["AUC Acumulado"].iloc[0]) if not df_ano_sorted["AUC Acumulado"].empty else 0.0
+                return val_banco if val_banco > 0 else 0.0
 
         return 0.0
     except Exception:
@@ -2229,8 +2213,6 @@ def calcular_valor_projetado_rumo_1bi(auc_initial: float, data_ref: pd.Timestamp
     Fórmula: (1.000.000.000 - AUC Inicial) / Quantidade de Dias Úteis (2026 + 2027)
     """
     try:
-        OBJETIVO_FINAL = 1_000_000_000.0
-        
         # Usar EXATAMENTE a mesma lógica do AUC-2026
         # Calcular TODOS os dias do ano (365 dias), não apenas dias úteis
         dias_uteis_2026 = calcular_dias_uteis(2026)
@@ -2243,17 +2225,7 @@ def calcular_valor_projetado_rumo_1bi(auc_initial: float, data_ref: pd.Timestamp
         
         # Calcular dias decorridos desde início de 2026 até a data de referência
         inicio_2026 = pd.Timestamp(2026, 1, 1)
-        
-        if data_ref < inicio_2026:
-            return 0.0
-        
-        # Contar TODOS os dias do ano (365 dias), não apenas úteis
-        dias_decorridos = 0
-        current_date = inicio_2026
-        while current_date <= data_ref:
-            # Contar todos os dias (incluindo fins de semana)
-            dias_decorridos += 1
-            current_date += pd.Timedelta(days=1)
+        dias_decorridos = (data_ref - inicio_2026).days + 1
         
         # Calcular valor projetado (EXATAMENTE a mesma lógica do AUC-2026)
         valor_projetado = auc_initial + (crescimento_diario * dias_decorridos)
@@ -3272,13 +3244,23 @@ def calcular_indicadores_objetivos(
     meta_captacao_mes = 0.0
     
     if not df_objetivos.empty:
-        # Filtra pelo ano 2026 (já deveria estar filtrado, mas garantindo)
-        df_2026 = df_objetivos[df_objetivos["Objetivo"] == ANO_OBJETIVO].copy()
+        # Filtra pelo ano 2026 (usando a coluna Data)
+        if "Data" in df_objetivos.columns:
+            # Converter para datetime se não for
+            if not pd.api.types.is_datetime64_any_dtype(df_objetivos["Data"]):
+                df_objetivos["Data"] = pd.to_datetime(df_objetivos["Data"], errors="coerce")
+            
+            # Filtrar registros do ano especificado
+            df_2026 = df_objetivos[df_objetivos["Data"].dt.year == ANO_OBJETIVO].copy()
+        else:
+            df_2026 = pd.DataFrame()  # DataFrame vazio se não tiver coluna Data
         
         if not df_2026.empty:
             # Obtém a meta de captação anual
-            if "Cap. Liq Objetivo" in df_2026.columns:
-                meta_captacao_ano = float(df_2026["Cap. Liq Objetivo"].iloc[0])
+            if "Cap Objetivo (ano)" in df_2026.columns:
+                # Pegar o valor mais recente do ano
+                df_2026_sorted = df_2026.sort_values("Data")
+                meta_captacao_ano = float(df_2026_sorted["Cap Objetivo (ano)"].iloc[-1])
                 resultado["capliq_ano"]["max"] = meta_captacao_ano
                 
                 # Calcula a meta mensal (média simples de 12 meses)
@@ -3656,10 +3638,10 @@ def _render_top3_horizontal(items: List[Tuple[str, float]], header_text: str) ->
 def render_rumo_a_1bi(auc_base_inicial_2025: float = 0.0):
     """
     Renderiza o painel 'Rumo a 1BI' na coluna atual.
-    Nova lógica: Usa AUC Initial de 2026 e calcula crescimento para 1bi em 2026+2027.
+    Nova lógica: Usa objetivo fixo para RUMO A 1BI.
     """
-    OBJETIVO_FINAL = 1_000_000_000.0
-
+    OBJETIVO_FINAL = 1_000_000_000.0  # 1 bilhão fixo
+    
     v_auc = 0.0
     try:
         mets_local = calcular_indicadores_objetivos(df_pos_f, df_obj, hoje=data_ref)
@@ -3669,32 +3651,35 @@ def render_rumo_a_1bi(auc_base_inicial_2025: float = 0.0):
         st.error(f"Erro ao carregar o AUC atual: {e}")
         v_auc = 0.0
 
-    # Obter AUC Initial de 2026 - garantir consistência global entre os cards
-    auc_initial_2026_global = obter_auc_initial(2026)
+    # Carregar dados da Objetivos_PJ1
+    df_objetivos_pj1 = carregar_dados_objetivos_pj1()
     
-    # Garantir que ambos os cards usem exatamente o mesmo valor base
-    # Usar o mesmo valor para ambos os cards: Rumo a 1bi e AUC-2026
-    # O valor já vem do banco de dados através da função obter_auc_initial()
+    # NOVA LÓGICA: Usar dados da Objetivos_PJ1 apenas para o projetado
+    if df_objetivos_pj1 is not None and not df_objetivos_pj1.empty:
+        # Para o projetado, usar a mesma lógica do AUC-2026
+        _, projetado_acumulado = obter_dados_rumo_1bi(df_objetivos_pj1, data_ref)
+        threshold_projetado = projetado_acumulado
+    else:
+        # Fallback para lógica antiga
+        # Obter AUC Initial de 2026
+        auc_initial_2026_global = obter_auc_initial(2026)
+        
+        # Definir na variável global para ser acessível por ambas as funções
+        global valor_base_auc_2026
+        valor_base_auc_2026 = auc_initial_2026_global
+        
+        # Para o card Rumo a 1bi
+        data_atualizacao = pd.Timestamp(data_ref)
+        
+        # Usar o mesmo valor base para ambos os cards
+        threshold_projetado = calcular_valor_projetado_rumo_1bi(valor_base_auc_2026, data_atualizacao)
     
-    # Definir na variável global para ser acessível por ambas as funções
-    global valor_base_auc_2026
-    valor_base_auc_2026 = auc_initial_2026_global
-    
-    # Para o card Rumo a 1bi
-    data_atualizacao = pd.Timestamp(data_ref)
-    
-    # Obter a meta de AUC-2026 para usar como referência intermediária
-    meta_auc_2026 = obter_meta_objetivo(2026, "auc_objetivo_ano", 694_000_000.0)
-    
-    # Usar o mesmo valor base para ambos os cards
-    threshold_projetado = calcular_valor_projetado_rumo_1bi(valor_base_auc_2026, data_atualizacao)
-    
-    # Calcular métricas usando a meta de AUC-2026 como referência
+    # Calcular métricas usando o objetivo fixo de 1bi
     v_auc = arredondar_valor(float(mets.get("auc", {}).get("valor", 0.0) or 0.0), 2)
-    pct_auc = (v_auc / meta_auc_2026) * 100 if meta_auc_2026 > 0 else 0
-    restante_auc = max(0.0, meta_auc_2026 - v_auc)
+    pct_auc = (v_auc / OBJETIVO_FINAL) * 100 if OBJETIVO_FINAL > 0 else 0
+    restante_auc = max(0.0, OBJETIVO_FINAL - v_auc)
     fim_2027 = pd.Timestamp(2027, 12, 31)
-    dias_restantes = max(0, (fim_2027 - data_atualizacao).days)
+    dias_restantes = max(0, (fim_2027 - pd.Timestamp(data_ref)).days)
 
     diff_pace = v_auc - threshold_projetado
     pct_diff_pace = (diff_pace / threshold_projetado * 100) if threshold_projetado > 0 else 0
@@ -3706,11 +3691,11 @@ def render_rumo_a_1bi(auc_base_inicial_2025: float = 0.0):
         diff_text = f"<span style='color:#e74c3c'>{fmt_valor(diff_pace)} ({pct_diff_pace:+.1f}%)</span>"
         border_style = "border-left-color: #e74c3c !important;"
 
-    fmt_objetivo_final = formatar_valor_curto(meta_auc_2026)
+    fmt_objetivo_final = formatar_valor_curto(OBJETIVO_FINAL)
     st.markdown(
         f"""
         <div class='objetivo-card-topo'>
-          <span>Objetivo Total (2027):</span>
+          <span>Objetivo Total:</span>
           <span class='valor'>{fmt_objetivo_final}</span>
         </div>
         """,
@@ -4494,7 +4479,7 @@ with st.container():
             else:
                 # --- Nova Lógica Feebased com Valores Fixos ---
                 # Valores definidos conforme solicitação
-                OBJETIVO_FINAL_FEEBASED = 200_000_000.0  # 200 milhões
+                OBJETIVO_FINAL_FEEBASED = 250_000_000.0  # 250 milhões
                 VALOR_INICIAL_FEEBASED = 119_358_620.0  # Valor inicial fixo
                 
                 # Calcula o realizado: soma de P/L onde Status é 'Ativo'
@@ -4651,37 +4636,57 @@ with st.container():
         )
         st.markdown("<div class='col-tv-inner'>", unsafe_allow_html=True)
 
+        # Carregar dados da Objetivos_PJ1
+        df_objetivos_pj1 = carregar_dados_objetivos_pj1()
+        
+        # NOVA LÓGICA: Usar dados da Objetivos_PJ1
+        if df_objetivos_pj1 is not None and not df_objetivos_pj1.empty:
+            objetivo_total_mes, projetado_mes = obter_dados_captacao_mes(df_objetivos_pj1, data_ref)
+            obj_total_mes = objetivo_total_mes
+            threshold_mes = projetado_mes
+            
+            # Definir variáveis de data para consistência
+            data_atualizacao = pd.Timestamp(data_ref)
+            primeiro_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1)
+            ultimo_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1) + pd.offsets.MonthEnd(1)
+        else:
+            # Fallback para lógica antiga
+            ano_atual = data_ref.year
+            fallback_cap = 152_700_000.0 if ano_atual == 2025 else 0.0
+
+            meta_anual = obter_meta_objetivo(ano_meta=ano_atual, coluna="cap_objetivo_ano", fallback=fallback_cap)
+            v_ano = float(mets.get("capliq_ano", {}).get("valor", 0.0) or 0.0)
+
+            # Usar meta mensal fixa (meta anual dividida por 12)
+            obj_total_mes = (meta_anual or 0.0) / 12
+
+            data_atualizacao = pd.Timestamp(data_ref)
+            primeiro_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1)
+            ultimo_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1) + pd.offsets.MonthEnd(1)
+
+            # Usar dias corridos como no cálculo do ano (para consistência)
+            total_dias_mes = (ultimo_dia_mes - primeiro_dia_mes).days + 1
+            dias_ate_atualizacao = (data_atualizacao - primeiro_dia_mes).days + 1
+
+            # Calcular valor projetado (usar a mesma proporção exata do ano)
+            primeiro_dia_ano = pd.Timestamp(data_ref.year, 1, 1)
+            ultimo_dia_ano = pd.Timestamp(data_ref.year, 12, 31)
+            total_dias_ano = (ultimo_dia_ano - primeiro_dia_ano).days + 1
+            dias_ate_atualizacao_ano = (data_atualizacao - primeiro_dia_ano).days + 1
+            
+            threshold_ano_col_local = (meta_anual * dias_ate_atualizacao_ano) / total_dias_ano if total_dias_ano > 0 else 0.0
+            threshold_ano_col_local = min(threshold_ano_col_local, float(meta_anual or 0.0))
+            threshold_ano_col_local = round(threshold_ano_col_local, 1)
+            
+            threshold_mes = threshold_ano_col_local  # Usar o mesmo valor do projetado do ano para consistência
+        
+        # Valor realizado atual (mantido do sistema original)
         v_mes = float(mets.get("capliq_mes", {}).get("valor", 0.0) or 0.0)
-
-        ano_atual = data_ref.year
-        fallback_cap = 152_700_000.0 if ano_atual == 2025 else 0.0
-
-        meta_anual = obter_meta_objetivo(ano_meta=ano_atual, coluna="cap_objetivo_ano", fallback=fallback_cap)
-        v_ano = float(mets.get("capliq_ano", {}).get("valor", 0.0) or 0.0)
-
-        # Usar meta mensal fixa (meta anual dividida por 12)
-        obj_total_mes = (meta_anual or 0.0) / 12
-
+        
+        # Data de atualização para cálculos
         data_atualizacao = pd.Timestamp(data_ref)
         primeiro_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1)
         ultimo_dia_mes = pd.Timestamp(data_atualizacao.year, data_atualizacao.month, 1) + pd.offsets.MonthEnd(1)
-
-        # Usar dias corridos como no cálculo do ano (para consistência)
-        total_dias_mes = (ultimo_dia_mes - primeiro_dia_mes).days + 1
-        dias_ate_atualizacao = (data_atualizacao - primeiro_dia_mes).days + 1
-
-        # Calcular valor projetado (usar a mesma proporção exata do ano)
-        # Calcular threshold_ano_col localmente para evitar erro de variável não definida
-        primeiro_dia_ano = pd.Timestamp(data_ref.year, 1, 1)
-        ultimo_dia_ano = pd.Timestamp(data_ref.year, 12, 31)
-        total_dias_ano = (ultimo_dia_ano - primeiro_dia_ano).days + 1
-        dias_ate_atualizacao_ano = (data_atualizacao - primeiro_dia_ano).days + 1
-        
-        threshold_ano_col_local = (meta_anual * dias_ate_atualizacao_ano) / total_dias_ano if total_dias_ano > 0 else 0.0
-        threshold_ano_col_local = min(threshold_ano_col_local, float(meta_anual or 0.0))
-        threshold_ano_col_local = round(threshold_ano_col_local, 1)
-        
-        threshold_mes = threshold_ano_col_local  # Usar o mesmo valor do projetado do ano para consistência
 
         st.markdown(
             f"""
@@ -4760,21 +4765,38 @@ with st.container():
         )
         st.markdown("<div class='col-tv-inner'>", unsafe_allow_html=True)
 
+        # Carregar dados da Objetivos_PJ1
+        df_objetivos_pj1 = carregar_dados_objetivos_pj1()
+        
+        # NOVA LÓGICA: Usar dados da Objetivos_PJ1
+        if df_objetivos_pj1 is not None and not df_objetivos_pj1.empty:
+            objetivo_total, projetado_acumulado = obter_dados_captacao_ano(df_objetivos_pj1, data_ref)
+            meta_eoy_col = objetivo_total
+            threshold_ano_col = projetado_acumulado
+            
+            # Definir variáveis de data para consistência
+            primeiro_dia_ano_col = pd.Timestamp(data_ref.year, 1, 1)
+            ultimo_dia_ano_col = pd.Timestamp(data_ref.year, 12, 31)
+            data_atualizacao_ano_col = pd.Timestamp(data_ref)
+        else:
+            # Fallback para lógica antiga
+            v_ano_col = float(mets.get("capliq_ano", {}).get("valor", 0.0) or 0.0)
+            ano_atual_col = data_ref.year
+            fallback_cap_col = 152_700_000.0 if ano_atual_col == 2025 else 0.0
+            meta_eoy_col = obter_meta_objetivo(ano_meta=ano_atual_col, coluna="cap_objetivo_ano", fallback=fallback_cap_col)
+
+            primeiro_dia_ano_col = pd.Timestamp(data_ref.year, 1, 1)
+            ultimo_dia_ano_col = pd.Timestamp(data_ref.year, 12, 31)
+            data_atualizacao_ano_col = pd.Timestamp(data_ref)
+            total_dias_ano_col = (ultimo_dia_ano_col - primeiro_dia_ano_col).days + 1
+            dias_ate_atualizacao_ano_col = (data_atualizacao_ano_col - primeiro_dia_ano_col).days + 1
+
+            threshold_ano_col = (meta_eoy_col * dias_ate_atualizacao_ano_col) / total_dias_ano_col if total_dias_ano_col > 0 else 0.0
+            threshold_ano_col = min(threshold_ano_col, float(meta_eoy_col or 0.0))
+            threshold_ano_col = round(threshold_ano_col, 1)
+        
+        # Valor realizado atual (mantido do sistema original)
         v_ano_col = float(mets.get("capliq_ano", {}).get("valor", 0.0) or 0.0)
-        ano_atual_col = data_ref.year
-        fallback_cap_col = 152_700_000.0 if ano_atual_col == 2025 else 0.0
-        meta_eoy_col = obter_meta_objetivo(ano_meta=ano_atual_col, coluna="cap_objetivo_ano", fallback=fallback_cap_col)
-
-        primeiro_dia_ano_col = pd.Timestamp(data_ref.year, 1, 1)
-        ultimo_dia_ano_col = pd.Timestamp(data_ref.year, 12, 31)
-        data_atualizacao_ano_col = pd.Timestamp(data_ref)
-        total_dias_ano_col = (ultimo_dia_ano_col - primeiro_dia_ano_col).days + 1
-        dias_ate_atualizacao_ano_col = (data_atualizacao_ano_col - primeiro_dia_ano_col).days + 1
-
-        threshold_ano_col = (meta_eoy_col * dias_ate_atualizacao_ano_col) / total_dias_ano_col if total_dias_ano_col > 0 else 0.0
-        threshold_ano_col = min(threshold_ano_col, float(meta_eoy_col or 0.0))
-        # Arredondar para mesma precisão do valor projetado do mês
-        threshold_ano_col = round(threshold_ano_col, 1)
 
         st.markdown(
             f"""
@@ -4853,19 +4875,33 @@ with st.container():
         st.markdown("<div class='col-tv-inner'>", unsafe_allow_html=True)
 
         try:
+            # Carregar dados da Objetivos_PJ1
+            df_objetivos_pj1 = carregar_dados_objetivos_pj1()
+            
+            # NOVA LÓGICA: Usar dados da Objetivos_PJ1
+            if df_objetivos_pj1 is not None and not df_objetivos_pj1.empty:
+                objetivo_total, projetado_acumulado = obter_dados_auc_2026(df_objetivos_pj1, data_ref)
+                meta_2026 = objetivo_total
+                threshold_projetado = projetado_acumulado
+            else:
+                # Fallback para lógica antiga
+                # Definir data de atualização para este card (usando data_ref como base)
+                data_atualizacao = pd.Timestamp(data_ref)
+                
+                # Usar o mesmo valor base do card Rumo a 1bi para garantir consistência
+                # Obter o valor base AUC de 2026
+                auc_initial_2026_local = obter_auc_initial(2026)
+                if auc_initial_2026_local == 0.0:
+                    auc_initial_2026_local = 453052907  # Valor fixo baseado no banco de objetivos
+                
+                # Obter a meta para 2026
+                meta_2026 = obter_meta_objetivo(2026, "auc_objetivo_ano", 694_000_000.0)
+                
+                data_atualizacao = pd.Timestamp(data_ref)
+                threshold_projetado = calcular_valor_projetado_auc_2026(auc_initial_2026_local, meta_2026, data_atualizacao)
+            
             # Definir data de atualização para este card (usando data_ref como base)
             data_atualizacao = pd.Timestamp(data_ref)
-            
-            # Usar o mesmo valor base do card Rumo a 1bi para garantir consistência
-            # Obter o valor base AUC de 2026
-            auc_initial_2026_local = obter_auc_initial(2026)
-            if auc_initial_2026_local == 0.0:
-                auc_initial_2026_local = 453052907  # Valor fixo baseado no banco de objetivos
-            
-            # Obter a meta para 2026
-            meta_2026 = obter_meta_objetivo(2026, "auc_objetivo_ano", 694_000_000.0)
-            
-            threshold_projetado = calcular_valor_projetado_auc_2026(auc_initial_2026_local, meta_2026, data_atualizacao)
             
             # Obtém o valor atual do AUC
             v_auc = arredondar_valor(float(mets.get("auc", {}).get("valor", 0.0) or 0.0), 2)
