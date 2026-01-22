@@ -149,63 +149,49 @@ st.markdown(
         background: linear-gradient(90deg, rgba(46,204,113,0.95), rgba(46,204,113,0.65));
       }}
 
-      /* PÓDIO (stage com proporção do SVG) */
+      /* PÓDIO */
       .podium-wrap{{
         background: #101827;
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 16px;
         position: relative;
         overflow: hidden;
-        height: {podium_height}px; /* você já usa {podium_height}px -> pode manter */
-        display: flex;
-        justify-content: center;
-        align-items: flex-end;
+        height: {podium_height}px; /* ou 250px */
       }}
-      /* Stage com proporção do SVG (1200x300 = 4:1) */
-      .podium-stage{{
-        position: relative;
-        height: 100%;
-        aspect-ratio: 4 / 1;
-        width: auto;
-        max-width: 100%;
-      }}
-      /* SVG do pódio */
+      /* SVG do pódio SEM CORTE */
       .podium-bg{{
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
-        object-fit: contain;
-        object-position: center bottom;
+        object-fit: contain;             /* mostra inteiro */
+        object-position: center bottom;  /* degraus no "chão" */
         opacity: 0.95;
         pointer-events: none;
       }}
-      /* Pessoa: a âncora é o TOPO do degrau */
+      /* Overlay do atleta: agora ANCORADO PELO BOTTOM (topo do degrau) */
       .podium-person{{
         position: absolute;
         z-index: 5;
-        width: 34%;
-        max-width: 360px;
-        min-width: 240px;
         left: 50%;
-        /* CRÍTICO: bottom do "stack" encosta no topo do degrau */
-        transform: translate(-50%, -100%);
+        transform: translateX(-50%) translateY(-8px); /* levanta um tico acima do degrau */
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         text-align: center;
         pointer-events: none;
+        width: 320px;
+        max-width: 34vw;
       }}
-      /* X e Y ancorados nos degraus do SVG (viewBox 1200x300)
-         X: centros ~ 300, 600, 900 => 25%, 50%, 75%
-         Y: topo dos blocos: 140, 90, 165 (em 300px de altura) */
-      .podium-person.p1{{ left: 50%; top: 30%; }}      /* 1º (y=90)  */
-      .podium-person.p2{{ left: 25%; top: 46.67%; }}   /* 2º (y=140) */
-      .podium-person.p3{{ left: 75%; top: 55%; }}      /* 3º (y=165) */
+      /* Centros em X (mesmos centros do SVG: 300 / 600 / 900 => 25% / 50% / 75%) */
+      /* E bottom = topo exato do degrau (calculado do viewBox 300px de altura) */
+      .podium-person.p1{{ left: 50%; bottom: 70%; }}       /* 1º lugar (y=90)  */
+      .podium-person.p2{{ left: 25%; bottom: 53.333%; }}   /* 2º lugar (y=140) */
+      .podium-person.p3{{ left: 75%; bottom: 45%; }}       /* 3º lugar (y=165) */
       .podium-avatar{{
-        width: 72px;
-        height: 72px;
+        width: 74px;
+        height: 74px;
         border-radius: 999px;
         border: 3px solid rgba(255,255,255,0.22);
         box-shadow: 0 14px 26px rgba(0,0,0,0.45);
@@ -228,9 +214,6 @@ st.markdown(
         line-height: 1.1;
         color: #E8EEF7;
         backdrop-filter: blur(6px);
-        max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
       }}
 
@@ -671,12 +654,10 @@ def podium_person_html(pos_class: str, medal: str, pill_class: str, avatar_uri: 
 # Monta o HTML "flat" (sem linhas indentadas com 4 espaços)
 podium_html = (
     f'<div class="podium-wrap">'
-    f'  <div class="podium-stage">'
-    f'    <img class="podium-bg" src="{podium_bg}" />'
-    f'    {podium_person_html("p2", "🥈", "pill-silver", a2, str(top3.iloc[1]["assessor"]))}'
-    f'    {podium_person_html("p1", "🥇", "pill-gold",   a1, str(top3.iloc[0]["assessor"]))}'
-    f'    {podium_person_html("p3", "🥉", "pill-bronze", a3, str(top3.iloc[2]["assessor"]))}'
-    f'  </div>'
+    f'  <img class="podium-bg" src="{podium_bg}" />'
+    f'  {podium_person_html("p2", "🥈", "pill-silver", a2, str(top3.iloc[1]["assessor"]))}'
+    f'  {podium_person_html("p1", "🥇", "pill-gold",   a1, str(top3.iloc[0]["assessor"]))}'
+    f'  {podium_person_html("p3", "🥉", "pill-bronze", a3, str(top3.iloc[2]["assessor"]))}'
     f'</div>'
 )
 
