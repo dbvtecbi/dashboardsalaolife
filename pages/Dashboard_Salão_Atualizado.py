@@ -2018,6 +2018,230 @@ def _pace_mes_dias_uteis(data_ref_local: pd.Timestamp) -> float:
     return float(dias_uteis_corridos / dias_uteis_mes)
 
 
+def calcular_transferencias_liquidas_mes(data_atualizacao: datetime) -> Tuple[float, Dict[str, float]]:
+    """
+    Calcula transferências líquidas do mês (Entradas - Saídas).
+    
+    Args:
+        data_atualizacao: Data de referência para o filtro mensal
+        
+    Returns:
+        Tuple[float, Dict[str, float]]: (total_liquido_mes, {codigo_assessor: transferencia_liquida})
+    """
+    # Define período do mês
+    primeiro_dia = data_atualizacao.replace(day=1)
+    ultimo_dia = (primeiro_dia + pd.offsets.MonthEnd(0))
+    
+    dbp = _find_transfer_db_path()
+    if dbp is None:
+        return 0.0, {}
+    
+    try:
+        with sqlite3.connect(str(dbp)) as conn:
+            table = _pick_transfers_table(conn)
+            if not table:
+                return 0.0, {}
+            
+            cols = pd.read_sql_query(f"PRAGMA table_info({_qident(table)});", conn)["name"].tolist()
+            mp = _pick_transfer_cols(cols)
+            
+            # Verificar colunas essenciais
+            if not all([mp.get("pl"), mp.get("tipo"), mp.get("status")]):
+                return 0.0, {}
+            
+            c_pl = _qident(mp["pl"])
+            c_tipo = _qident(mp["tipo"])
+            c_status = _qident(mp["status"])
+            c_cod_o = _qident(mp["cod_origem"]) if mp["cod_origem"] else None
+            c_cod_d = _qident(mp["cod_destino"]) if mp["cod_destino"] else None
+            c_solic = _qident(mp["data_solic"]) if mp["data_solic"] else None
+            c_transf = _qident(mp["data_transf"]) if mp["data_transf"] else None
+            
+            # Data efetiva com prioridade: Data Solicitação > Data Transferência
+            data_coalesce = "COALESCE("
+            if c_solic:
+                data_coalesce += f"DATE({_sql_date_conv_expr(c_solic)})"
+            if c_transf:
+                data_coalesce += f", DATE({_sql_date_conv_expr(c_transf)})" if c_solic else f"DATE({_sql_date_conv_expr(c_transf)})"
+            data_coalesce += ")"
+            
+            # Query para calcular transferências líquidas por assessor
+            query = f"""
+            WITH transferencias_periodo AS (
+                SELECT 
+                    {c_pl} AS pl,
+                    LOWER(TRIM(CAST({c_tipo} AS TEXT))) AS tipo_norm,
+                    CASE 
+                        WHEN LOWER(TRIM(CAST({c_tipo} AS TEXT))) = 'entrada' THEN {c_cod_o}
+                        WHEN LOWER(TRIM(CAST({c_tipo} AS TEXT))) = 'saída' THEN {c_cod_d}
+                        ELSE NULL
+                    END AS codigo_assessor
+                FROM {_qident(table)}
+                WHERE LOWER(TRIM(CAST({c_status} AS TEXT))) IN ('concluido', 'concluído')
+                  AND {c_pl} IS NOT NULL 
+                  AND TRIM(CAST({c_pl} AS TEXT)) != ''
+                  AND TRIM(CAST({c_pl} AS TEXT)) != '0'
+                  AND {data_coalesce} BETWEEN DATE('{primeiro_dia.strftime('%Y-%m-%d')}') 
+                                         AND DATE('{ultimo_dia.strftime('%Y-%m-%d')}')
+            ),
+            totais_gerais AS (
+                SELECT 
+                    SUM(CASE WHEN tipo_norm = 'entrada' THEN CAST(pl AS REAL) ELSE 0 END) AS total_entradas,
+                    SUM(CASE WHEN tipo_norm = 'saída' THEN CAST(pl AS REAL) ELSE 0 END) AS total_saidas
+                FROM transferencias_periodo
+                WHERE codigo_assessor IS NOT NULL
+            ),
+            totais_assessor AS (
+                SELECT 
+                    codigo_assessor,
+                    SUM(CASE WHEN tipo_norm = 'entrada' THEN CAST(pl AS REAL) ELSE -CAST(pl AS REAL) END) AS transferencia_liquida
+                FROM transferencias_periodo
+                WHERE codigo_assessor IS NOT NULL
+                  AND TRIM(CAST(codigo_assessor AS TEXT)) != ''
+                GROUP BY codigo_assessor
+            )
+            SELECT 
+                (SELECT total_entradas FROM totais_gerais) - (SELECT total_saidas FROM totais_gerais) AS total_liquido,
+                codigo_assessor,
+                transferencia_liquida
+            FROM totais_assessor
+            """
+            
+            df_result = pd.read_sql_query(query, conn)
+            
+            if df_result.empty:
+                return 0.0, {}
+            
+            # Extrair total líquido
+            total_liquido = float(df_result['total_liquido'].iloc[0] or 0.0)
+            
+            # Extrair transferências por assessor
+            transferencias_por_assessor = {}
+            if 'codigo_assessor' in df_result.columns and 'transferencia_liquida' in df_result.columns:
+                for _, row in df_result[['codigo_assessor', 'transferencia_liquida']].dropna().iterrows():
+                    cod_assessor = str(row['codigo_assessor']).strip()
+                    if cod_assessor:
+                        transferencias_por_assessor[cod_assessor] = float(row['transferencia_liquida'])
+            
+            return total_liquido, transferencias_por_assessor
+            
+    except Exception as e:
+        st.sidebar.error(f"Erro ao calcular transferências mês: {str(e)}")
+        return 0.0, {}
+
+
+def calcular_transferencias_liquidas_ano(data_atualizacao: datetime) -> Tuple[float, Dict[str, float]]:
+    """
+    Calcula transferências líquidas do ano (Entradas - Saídas).
+    
+    Args:
+        data_atualizacao: Data de referência para o filtro anual
+        
+    Returns:
+        Tuple[float, Dict[str, float]]: (total_liquido_ano, {codigo_assessor: transferencia_liquida})
+    """
+    # Define período do ano
+    primeiro_dia = data_atualizacao.replace(month=1, day=1)
+    ultimo_dia = data_atualizacao.replace(month=12, day=31)
+    
+    dbp = _find_transfer_db_path()
+    if dbp is None:
+        return 0.0, {}
+    
+    try:
+        with sqlite3.connect(str(dbp)) as conn:
+            table = _pick_transfers_table(conn)
+            if not table:
+                return 0.0, {}
+            
+            cols = pd.read_sql_query(f"PRAGMA table_info({_qident(table)});", conn)["name"].tolist()
+            mp = _pick_transfer_cols(cols)
+            
+            # Verificar colunas essenciais
+            if not all([mp.get("pl"), mp.get("tipo"), mp.get("status")]):
+                return 0.0, {}
+            
+            c_pl = _qident(mp["pl"])
+            c_tipo = _qident(mp["tipo"])
+            c_status = _qident(mp["status"])
+            c_cod_o = _qident(mp["cod_origem"]) if mp["cod_origem"] else None
+            c_cod_d = _qident(mp["cod_destino"]) if mp["cod_destino"] else None
+            c_solic = _qident(mp["data_solic"]) if mp["data_solic"] else None
+            c_transf = _qident(mp["data_transf"]) if mp["data_transf"] else None
+            
+            # Data efetiva com prioridade: Data Solicitação > Data Transferência
+            data_coalesce = "COALESCE("
+            if c_solic:
+                data_coalesce += f"DATE({_sql_date_conv_expr(c_solic)})"
+            if c_transf:
+                data_coalesce += f", DATE({_sql_date_conv_expr(c_transf)})" if c_solic else f"DATE({_sql_date_conv_expr(c_transf)})"
+            data_coalesce += ")"
+            
+            # Query para calcular transferências líquidas por assessor
+            query = f"""
+            WITH transferencias_periodo AS (
+                SELECT 
+                    {c_pl} AS pl,
+                    LOWER(TRIM(CAST({c_tipo} AS TEXT))) AS tipo_norm,
+                    CASE 
+                        WHEN LOWER(TRIM(CAST({c_tipo} AS TEXT))) = 'entrada' THEN {c_cod_o}
+                        WHEN LOWER(TRIM(CAST({c_tipo} AS TEXT))) = 'saída' THEN {c_cod_d}
+                        ELSE NULL
+                    END AS codigo_assessor
+                FROM {_qident(table)}
+                WHERE LOWER(TRIM(CAST({c_status} AS TEXT))) IN ('concluido', 'concluído')
+                  AND {c_pl} IS NOT NULL 
+                  AND TRIM(CAST({c_pl} AS TEXT)) != ''
+                  AND TRIM(CAST({c_pl} AS TEXT)) != '0'
+                  AND {data_coalesce} BETWEEN DATE('{primeiro_dia.strftime('%Y-%m-%d')}') 
+                                         AND DATE('{ultimo_dia.strftime('%Y-%m-%d')}')
+            ),
+            totais_gerais AS (
+                SELECT 
+                    SUM(CASE WHEN tipo_norm = 'entrada' THEN CAST(pl AS REAL) ELSE 0 END) AS total_entradas,
+                    SUM(CASE WHEN tipo_norm = 'saída' THEN CAST(pl AS REAL) ELSE 0 END) AS total_saidas
+                FROM transferencias_periodo
+                WHERE codigo_assessor IS NOT NULL
+            ),
+            totais_assessor AS (
+                SELECT 
+                    codigo_assessor,
+                    SUM(CASE WHEN tipo_norm = 'entrada' THEN CAST(pl AS REAL) ELSE -CAST(pl AS REAL) END) AS transferencia_liquida
+                FROM transferencias_periodo
+                WHERE codigo_assessor IS NOT NULL
+                  AND TRIM(CAST(codigo_assessor AS TEXT)) != ''
+                GROUP BY codigo_assessor
+            )
+            SELECT 
+                (SELECT total_entradas FROM totais_gerais) - (SELECT total_saidas FROM totais_gerais) AS total_liquido,
+                codigo_assessor,
+                transferencia_liquida
+            FROM totais_assessor
+            """
+            
+            df_result = pd.read_sql_query(query, conn)
+            
+            if df_result.empty:
+                return 0.0, {}
+            
+            # Extrair total líquido
+            total_liquido = float(df_result['total_liquido'].iloc[0] or 0.0)
+            
+            # Extrair transferências por assessor
+            transferencias_por_assessor = {}
+            if 'codigo_assessor' in df_result.columns and 'transferencia_liquida' in df_result.columns:
+                for _, row in df_result[['codigo_assessor', 'transferencia_liquida']].dropna().iterrows():
+                    cod_assessor = str(row['codigo_assessor']).strip()
+                    if cod_assessor:
+                        transferencias_por_assessor[cod_assessor] = float(row['transferencia_liquida'])
+            
+            return total_liquido, transferencias_por_assessor
+            
+    except Exception as e:
+        st.sidebar.error(f"Erro ao calcular transferências ano: {str(e)}")
+        return 0.0, {}
+
+
 def calcular_captacao_total_liquida(df_pos: pd.DataFrame, data_ini: datetime, data_fim: datetime) -> float:
     """
     Soma captação líquida do Positivador + PL de transferências no intervalo.
@@ -3330,16 +3554,30 @@ def calcular_indicadores_objetivos(
         df_pos = df_pos[df_pos["Data_Posicao"].dt.year == ANO_OBJETIVO]
         
         if not df_pos.empty:
-            # Captação do mês atual
+            # Captação do mês atual (sem transferências)
             mes_atual = hoje.month
             df_mes_atual = df_pos[df_pos["Data_Posicao"].dt.month == mes_atual]
             
+            captacao_mes_sem_transf = 0.0
             if not df_mes_atual.empty and "Captacao_Liquida_em_M" in df_mes_atual.columns:
-                resultado["capliq_mes"]["valor"] = float(df_mes_atual["Captacao_Liquida_em_M"].sum() or 0.0)
+                captacao_mes_sem_transf = float(df_mes_atual["Captacao_Liquida_em_M"].sum() or 0.0)
             
-            # Captação acumulada do ano
+            # Captação acumulada do ano (sem transferências)
+            captacao_ano_sem_transf = 0.0
             if "Captacao_Liquida_em_M" in df_pos.columns:
-                resultado["capliq_ano"]["valor"] = float(df_pos["Captacao_Liquida_em_M"].sum() or 0.0)
+                captacao_ano_sem_transf = float(df_pos["Captacao_Liquida_em_M"].sum() or 0.0)
+            
+            # Calcular transferências líquidas
+            transferencia_liquida_mes, transferencias_por_assessor_mes = calcular_transferencias_liquidas_mes(hoje)
+            transferencia_liquida_ano, transferencias_por_assessor_ano = calcular_transferencias_liquidas_ano(hoje)
+            
+            # Integrar transferências nos valores realizados
+            resultado["capliq_mes"]["valor"] = captacao_mes_sem_transf + transferencia_liquida_mes
+            resultado["capliq_ano"]["valor"] = captacao_ano_sem_transf + transferencia_liquida_ano
+            
+            # Guardar transferências para uso nos Top 3
+            resultado["capliq_mes"]["transferencias_por_assessor"] = transferencias_por_assessor_mes
+            resultado["capliq_ano"]["transferencias_por_assessor"] = transferencias_por_assessor_ano
             
             # AUC do mês atual
             if not df_mes_atual.empty and "Net_Em_M" in df_mes_atual.columns:
@@ -3357,8 +3595,12 @@ def calcular_indicadores_objetivos(
         st.write(f"- Captação Mensal (média): R$ {meta_captacao_mes:,.2f} Mi")
         
         st.write("### Valores Realizados")
-        st.write(f"- Captação Mês: R$ {resultado['capliq_mes']['valor']:,.2f} Mi")
-        st.write(f"- Captação YTD: R$ {resultado['capliq_ano']['valor']:,.2f} Mi")
+        st.write(f"- Captação Mês (sem transf): R$ {captacao_mes_sem_transf if 'captacao_mes_sem_transf' in locals() else 0:,.2f} Mi")
+        st.write(f"- Transferências Mês: R$ {transferencia_liquida_mes if 'transferencia_liquida_mes' in locals() else 0:,.2f} Mi")
+        st.write(f"- Captação Mês (com transf): R$ {resultado['capliq_mes']['valor']:,.2f} Mi")
+        st.write(f"- Captação YTD (sem transf): R$ {captacao_ano_sem_transf if 'captacao_ano_sem_transf' in locals() else 0:,.2f} Mi")
+        st.write(f"- Transferências Ano: R$ {transferencia_liquida_ano if 'transferencia_liquida_ano' in locals() else 0:,.2f} Mi")
+        st.write(f"- Captação YTD (com transf): R$ {resultado['capliq_ano']['valor']:,.2f} Mi")
     
     return resultado
 
@@ -3460,6 +3702,7 @@ def top3_mes_cap(
     date_col: str = "Data_Posicao",
     value_col: str = "Captacao_Liquida_em_M",
     group_col: str = "assessor_code",
+    transferencias_por_assessor: Dict[str, float] = None,
 ) -> Tuple[List[Tuple[str, float]], str]:
     req = {date_col, value_col}
     if date_col not in df.columns:
@@ -3497,7 +3740,23 @@ def top3_mes_cap(
     if dmes.empty:
         return [], str(mesref)
 
-    serie = dmes.groupby(group_col)[value_col].sum().sort_values(ascending=False)
+    # Calcular captação por assessor no mês
+    serie = dmes.groupby(group_col)[value_col].sum()
+    
+    # Integrar transferências por assessor se fornecidas
+    if transferencias_por_assessor:
+        for cod_assessor, transferencia in transferencias_por_assessor.items():
+            # Padronizar código do assessor para comparação
+            cod_padronizado = str(cod_assessor).strip()
+            
+            # Provar correspondência exata ou normalizada
+            for assessor_in_serie in serie.index:
+                if str(assessor_in_serie).strip() == cod_padronizado:
+                    serie[assessor_in_serie] += transferencia
+                    break
+    
+    # Ordenar e retornar Top 5
+    serie = serie.sort_values(ascending=False)
     return list(serie.items())[:5], str(mesref)
 
 
@@ -3506,6 +3765,7 @@ def top3_ano_cap(
     date_col: str = "Data_Posicao",
     value_col: str = "Captacao_Liquida_em_M",
     group_col: str = "assessor_code",
+    transferencias_por_assessor: Dict[str, float] = None,
 ) -> Tuple[List[Tuple[str, float]], str]:
     req = {date_col, value_col}
     if date_col not in df.columns:
@@ -3543,7 +3803,23 @@ def top3_ano_cap(
     if dane.empty:
         return [], str(ano)
 
-    serie = dane.groupby(group_col)[value_col].sum().sort_values(ascending=False)
+    # Calcular captação por assessor no ano
+    serie = dane.groupby(group_col)[value_col].sum()
+    
+    # Integrar transferências por assessor se fornecidas
+    if transferencias_por_assessor:
+        for cod_assessor, transferencia in transferencias_por_assessor.items():
+            # Padronizar código do assessor para comparação
+            cod_padronizado = str(cod_assessor).strip()
+            
+            # Provar correspondência exata ou normalizada
+            for assessor_in_serie in serie.index:
+                if str(assessor_in_serie).strip() == cod_padronizado:
+                    serie[assessor_in_serie] += transferencia
+                    break
+    
+    # Ordenar e retornar Top 5
+    serie = serie.sort_values(ascending=False)
     return list(serie.items())[:5], str(ano)
 
 
@@ -4742,7 +5018,9 @@ with st.container():
         st.markdown(cards_mes_html, unsafe_allow_html=True)
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-        items_mes, _ = top3_mes_cap(df_pos_mes_cap_top3, date_col="Data_Posicao", value_col="Captacao_Liquida_em_M", group_col="assessor_code")
+        # Obter transferências por assessor do mês
+        transferencias_mes = mets.get("capliq_mes", {}).get("transferencias_por_assessor", {})
+        items_mes, _ = top3_mes_cap(df_pos_mes_cap_top3, date_col="Data_Posicao", value_col="Captacao_Liquida_em_M", group_col="assessor_code", transferencias_por_assessor=transferencias_mes)
         _render_top3_horizontal(items_mes, header_text="TOP 3 - Captação Mês")
 
         st.markdown("</div>", unsafe_allow_html=True)
@@ -4852,7 +5130,9 @@ with st.container():
         st.markdown(cards_ano_html_col, unsafe_allow_html=True)
 
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-        items_ano_col, _ = top3_ano_cap(df_pos_ano_cap_top3)
+        # Obter transferências por assessor do ano
+        transferencias_ano = mets.get("capliq_ano", {}).get("transferencias_por_assessor", {})
+        items_ano_col, _ = top3_ano_cap(df_pos_ano_cap_top3, transferencias_por_assessor=transferencias_ano)
         _render_top3_horizontal(items_ano_col, header_text="Top 3 — Captação Ano")
 
         st.markdown("</div>", unsafe_allow_html=True)
